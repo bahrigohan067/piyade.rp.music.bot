@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Environment Variables & Secrets
+.env
+cookies.txt
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
