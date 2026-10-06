@@ -69,13 +69,25 @@ class MusicCog(commands.Cog, name="Müzik"):
             )
 
         # 4. YouTube'dan şarkıyı ara / getir
-        song = await YTDLSource.from_query(sarki, interaction.user)
+        song, error_detail = await YTDLSource.from_query(sarki, interaction.user)
         if not song:
-            err_embed = discord.Embed(
-                title="❌ Şarkı Bulunamadı",
-                description=f"**{sarki}** araması için YouTube'da sonuç bulunamadı veya video kısıtlı.",
-                color=config.COLOR_ERROR
-            )
+            if error_detail == "BOT_CHECK":
+                err_embed = discord.Embed(
+                    title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                    description=(
+                        "YouTube, Railway veri merkezi IP adresini bot olarak algıladı ve erişimi engelledi.\n\n"
+                        "💡 **Çözüm Seçenekleri:**\n"
+                        "1. **Çerez Ekleme:** Tarayıcınızdan aldığınız YouTube `cookies.txt` içeriğini Railway Variables sekmesinde `YTDLP_COOKIES` değişkenine yapıştırın.\n"
+                        "2. **Dosya Yükleme:** Şarkıyı `/dosya-oynat` komutunu kullanarak doğrudan bilgisayarınızdan/telefonunuzdan yükleyip kesintisiz dinleyebilirsiniz."
+                    ),
+                    color=config.COLOR_ERROR
+                )
+            else:
+                err_embed = discord.Embed(
+                    title="❌ Şarkı Bulunamadı",
+                    description=f"**{sarki}** araması için YouTube'da sonuç bulunamadı veya video kısıtlı.",
+                    color=config.COLOR_ERROR
+                )
             return await interaction.followup.send(embed=err_embed)
 
         player = self.get_player(interaction.guild)

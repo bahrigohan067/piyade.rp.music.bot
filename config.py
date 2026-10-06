@@ -46,7 +46,7 @@ FFMPEG_BEFORE_OPTIONS = (
 
 FFMPEG_OPTIONS = "-vn"
 
-# yt-dlp Yapılandırması (YouTube IP ban/datacenter koruması için ios/android istemcileri kullanılır)
+# yt-dlp Yapılandırması
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
@@ -63,15 +63,29 @@ YTDL_OPTIONS = {
     'source_address': '0.0.0.0',
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'android', 'web_creator', 'mweb'],
+            'player_client': ['android', 'ios'],
+            'player_skip': ['webpage', 'configs']
         }
     }
 }
 
-# Çerez kontrolü (Eğer projede cookies.txt varsa yt-dlp'ye aktar)
-if os.path.exists("cookies.txt"):
-    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
-elif os.getenv("YTDLP_COOKIES"):
+# Çerez kontrolü (Railway'de YTDLP_COOKIES değişkeni veya projedeki cookies.txt)
+cookie_content = os.getenv("YTDLP_COOKIES")
+if cookie_content:
+    if "\\n" in cookie_content and "\n" not in cookie_content:
+        cookie_content = cookie_content.replace("\\n", "\n")
     with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write(os.getenv("YTDLP_COOKIES"))
+        f.write(cookie_content.strip())
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
+elif os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 0:
+    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
+
+# Eğer çerez tanımlandıysa standart istemcileri kullanarak tam yetkiyle çalıştır
+if 'cookiefile' in YTDL_OPTIONS:
+    YTDL_OPTIONS['extractor_args'] = {
+        'youtube': {
+            'player_client': ['web', 'android']
+        }
+    }
+
+
