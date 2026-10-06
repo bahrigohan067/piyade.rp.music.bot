@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Discord Bot Token
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+# Discord Bot Token (Railway'deki MUSIC_TOKEN değişkenini okur)
+DISCORD_TOKEN = os.getenv("MUSIC_TOKEN") or os.getenv("DISCORD_TOKEN", "")
 
 # Müzik Açma İzni Rol ID'si (Varsayılan: 1547589732937240627)
 MUSIC_ROLE_ID = int(os.getenv("MUSIC_ROLE_ID", "1547589732937240627"))

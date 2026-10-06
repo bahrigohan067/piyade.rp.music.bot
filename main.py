@@ -78,7 +78,7 @@ class PiyadeMusicBot(commands.Bot):
 
 async def main():
     if not config.DISCORD_TOKEN:
-        logger.error("❌ HATA: DISCORD_TOKEN bulunamadı! Lütfen .env dosyasını veya Railway ortam değişkenlerini kontrol edin.")
+        logger.error("❌ HATA: MUSIC_TOKEN bulunamadı! Lütfen Railway ortam değişkenlerini kontrol edin.")
         sys.exit(1)
 
     bot = PiyadeMusicBot()

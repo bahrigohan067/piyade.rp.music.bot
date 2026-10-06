@@ -82,7 +82,7 @@ Eğer **GitHub Desktop** kullanıyorsanız:
 
 | Değişken Adı | Değer | Açıklama |
 |---|---|---|
-| `DISCORD_TOKEN` | *Botunuzun Tokeni* | 1. adımda kopyaladığınız gizli bot tokeni |
+| `MUSIC_TOKEN` | *Botunuzun Tokeni* | Discord Developer Portal'dan aldığınız gizli bot tokeni |
 | `MUSIC_ROLE_ID` | `1547589732937240627` | Müzik açma yetkisine sahip rolün ID'si |
 | `GUILD_ID` | *Sunucunuzun ID'si* | (Opsiyonel) Slash komutlarının sunucuda anında görünmesini sağlar |
 
