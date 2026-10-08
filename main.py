@@ -53,6 +53,11 @@ class PiyadeMusicBot(commands.Bot):
         logger.info(f"🌐 Bağlı Sunucu Sayısı: {len(self.guilds)}")
         logger.info(f"==================================================")
 
+        for guild in self.guilds:
+            logger.info(f"Sunucu [{guild.name}] (ID: {guild.id}) - {len(guild.emojis)} adet emoji:")
+            for e in guild.emojis:
+                logger.info(f"  • {e.name} (ID: {e.id}, Animasyonlu: {e.animated}) -> {str(e)}")
+
         # Durum mesajı
         activity = discord.Activity(
             type=discord.ActivityType.listening,

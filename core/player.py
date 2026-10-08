@@ -85,19 +85,20 @@ class GuildMusicPlayer:
         if not self.current_song:
             return ""
 
-        # 5 birimlik özel ilerleme çubuğu
-        bar = create_emoji_progress_bar(self.elapsed_seconds, self.current_song.duration, length=5)
+        # Ses kanalının durumunda Discord sadece standart Unicode emojileri gösterir
         song_name = self.current_song.song_name
         artist_name = self.current_song.artist_name
 
         # Uzunluk taşmalarını engellemek için sınırla
-        if len(song_name) > 30:
-            song_name = song_name[:27] + "..."
-        if len(artist_name) > 22:
-            artist_name = artist_name[:19] + "..."
+        if len(song_name) > 32:
+            song_name = song_name[:29] + "..."
+        if len(artist_name) > 24:
+            artist_name = artist_name[:21] + "..."
 
-        prefix = "⏸️ " if self.is_paused else f"{config.EMOJI_CD} "
-        return f"{prefix}{song_name} - {artist_name} ┃ {bar}"
+        prefix = "⏸️ " if self.is_paused else "💿 "
+        
+        # İlerleme çubuğu ses kanalı durumunda olmayacak, sade ve şık gösterim
+        return f"{prefix}{song_name} - {artist_name}"
 
     async def update_voice_channel_status(self, custom_text: Optional[str] = None):
         """Ses kanalının durumunu günceller."""
@@ -112,21 +113,24 @@ class GuildMusicPlayer:
             return
         self.last_status_text = status_text
 
-        # 1. Native discord.py set_status varsa dene
-        if hasattr(channel, "set_status"):
-            try:
-                await channel.set_status(status_text)
-                return
-            except Exception:
-                pass
+        # 1. Native discord.py channel.edit(status=...)
+        try:
+            await channel.edit(status=status_text)
+            return
+        except discord.Forbidden:
+            print(f"[Voice Status] UYARI: Botun '{channel.name}' kanalında 'Ses Kanalı Durumu Belirleme' (Set Voice Channel Status) yetkisi yok!")
+            return
+        except Exception as e:
+            pass
 
-        # 2. Raw Route üzerinden Discord API endpoint'ini çağır
+        # 2. Raw Route üzerinden Discord API endpoint'ini çağır (Fallback)
         try:
             route = Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
             await self.bot.http.request(route, json={'status': status_text})
+        except discord.Forbidden:
+            print(f"[Voice Status] UYARI: Botun '{channel.name}' kanalında 'Ses Kanalı Durumu Belirleme' (Set Voice Channel Status) yetkisi yok!")
         except Exception as e:
-            # Yetki eksikliği veya rate limit durumlarında botun akışını bozma
-            pass
+            print(f"[Voice Status API Hatası] {e}")
 
     async def clear_voice_channel_status(self):
         """Ses kanalının durumunu temizler."""
@@ -134,12 +138,11 @@ class GuildMusicPlayer:
         if not self.voice_client or not self.voice_client.channel:
             return
         channel = self.voice_client.channel
-        if hasattr(channel, "set_status"):
-            try:
-                await channel.set_status("")
-                return
-            except Exception:
-                pass
+        try:
+            await channel.edit(status=None)
+            return
+        except Exception:
+            pass
         try:
             route = Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
             await self.bot.http.request(route, json={'status': ""})
@@ -321,12 +324,14 @@ class GuildMusicPlayer:
             color=embed_color
         )
 
-        # Özel emoji ilerleme çubuğu alanı
-        progress_bar = create_emoji_progress_bar(self.elapsed_seconds, self.current_song.duration, length=8)
+        # Özel emoji ilerleme çubuğu alanı (Dinamik ve güvenli çözümlü)
+        from utils.helpers import resolve_discord_emoji
+        cd_icon = resolve_discord_emoji(self.bot, self.guild, 1557833161508003871, "60263cd", fallback=config.EMOJI_CD)
+        progress_bar = create_emoji_progress_bar(self, self.elapsed_seconds, self.current_song.duration, length=8)
         elapsed_str = format_duration(self.elapsed_seconds)
         total_str = self.current_song.formatted_duration
         embed.add_field(
-            name=f"{config.EMOJI_CD} Çalma İlerlemesi",
+            name=f"{cd_icon} Çalma İlerlemesi",
             value=f"`{elapsed_str}` {progress_bar} `{total_str}`",
             inline=False
         )
