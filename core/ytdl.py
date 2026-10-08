@@ -1,14 +1,13 @@
 import asyncio
+import re
 import discord
 import yt_dlp
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import config
-from utils.helpers import format_duration, format_bytes
+from utils.helpers import format_duration, format_bytes, parse_song_and_artist, clean_title_noise
 
 # yt-dlp örneği
 ytdl = yt_dlp.YoutubeDL(config.YTDL_OPTIONS)
-
-from utils.helpers import format_duration, format_bytes, parse_song_and_artist, clean_title_noise
 
 class Song:
     """Müzik veya ses dosyası verilerini temsil eden sınıf."""
@@ -54,16 +53,40 @@ class Song:
 
 
 
-import re
+def is_playlist_url(query: str) -> bool:
+    """URL'in bir YouTube veya YouTube Music çalma listesi/albümü olup olmadığını kontrol eder."""
+    q = query.strip().lower()
+    if not (q.startswith("http://") or q.startswith("https://")):
+        return False
+    if "youtube.com" not in q and "youtu.be" not in q:
+        return False
+    # playlist?list= kontrolü
+    if "playlist?list=" in q or "/playlist?" in q:
+        return True
+    # watch?v=...&list=PL... veya list=OLAK... veya list=UU...
+    if "list=pl" in q or "list=olak" in q or "list=uu" in q or "list=fl" in q:
+        return True
+    return False
+
+
+def normalize_playlist_url(query: str) -> str:
+    """Çalma listesi URL'sini standart YouTube playlist URL formatına çevirir."""
+    query = query.strip()
+    match = re.search(r'[?&]list=([^&]+)', query)
+    if match:
+        playlist_id = match.group(1)
+        return f"https://www.youtube.com/playlist?list={playlist_id}"
+    return query.replace("music.youtube.com", "www.youtube.com")
+
 
 def clean_youtube_query(query: str) -> str:
-    """YouTube Music ve kişisel çalma listesi (LM vb.) parametrelerini temizler."""
+    """YouTube Music ve kişisel radyo/mix parametrelerini temizler."""
     query = query.strip()
     query = query.replace("music.youtube.com", "www.youtube.com")
     
-    # Eğer doğrudan bir video linkiyse (watch?v=), kişisel playlist &list=LM parametrelerini kaldır
+    # Eğer doğrudan bir video linkiyse (watch?v=), kişisel playlist &list=LM veya RD parametrelerini kaldır
     if "watch?" in query and "v=" in query:
-        query = re.sub(r'&list=[^&]+', '', query)
+        query = re.sub(r'&list=(?:LM|RD|UL|LL)[^&]*', '', query)
         query = re.sub(r'&index=[^&]+', '', query)
         query = re.sub(r'&start_radio=[^&]+', '', query)
     return query
@@ -78,9 +101,19 @@ class YTDLSource:
         stream_url = song.stream_url
         
         if not song.is_file and not stream_url:
-            fresh_song, _ = await cls.from_query(song.webpage_url, song.requester)
-            if fresh_song:
+            fresh_song, error_detail = await cls.from_query(song.webpage_url, song.requester)
+            if fresh_song and fresh_song.stream_url:
                 stream_url = fresh_song.stream_url
+                if fresh_song.duration and not song.duration:
+                    song.duration = fresh_song.duration
+                if fresh_song.thumbnail and not song.thumbnail:
+                    song.thumbnail = fresh_song.thumbnail
+                if fresh_song.song_name:
+                    song.song_name = fresh_song.song_name
+                if fresh_song.artist_name:
+                    song.artist_name = fresh_song.artist_name
+            else:
+                raise RuntimeError(f"Şarkı akış linki alınamadı: {error_detail or 'Bilinmeyen hata'}")
 
         audio = discord.FFmpegPCMAudio(
             stream_url,
@@ -153,3 +186,90 @@ class YTDLSource:
             file_name=attachment.filename,
             file_size=attachment.size
         )
+
+    @classmethod
+    async def from_playlist(
+        cls,
+        query: str,
+        requester: discord.Member,
+        max_songs: int = config.MAX_PLAYLIST_SONGS
+    ) -> tuple[List[Song], Optional[str], Optional[str]]:
+        """
+        YouTube veya YouTube Music çalma listesindeki tüm şarkıları flat (hızlı) modda çeker.
+        Döner: (songs_list, error_detail, playlist_title)
+        """
+        loop = asyncio.get_event_loop()
+        clean_url = normalize_playlist_url(query)
+
+        error_detail = None
+
+        playlist_opts = {
+            **config.YTDL_OPTIONS,
+            'noplaylist': False,
+            'extract_flat': 'in_playlist',
+            'playlistend': max_songs,
+            'ignoreerrors': True,
+        }
+
+        def extract():
+            nonlocal error_detail
+            try:
+                with yt_dlp.YoutubeDL(playlist_opts) as ydl:
+                    return ydl.extract_info(clean_url, download=False)
+            except Exception as e:
+                err_str = str(e)
+                print(f"[YTDL Playlist Error] {err_str}")
+                if "Sign in to confirm you" in err_str:
+                    error_detail = "BOT_CHECK"
+                else:
+                    error_detail = err_str
+                return None
+
+        data = await loop.run_in_executor(None, extract)
+        if not data:
+            return [], error_detail, None
+
+        raw_entries = data.get('entries') or []
+        if not isinstance(raw_entries, list):
+            raw_entries = list(raw_entries)
+
+        playlist_title = data.get('title') or "YouTube Çalma Listesi"
+        songs: List[Song] = []
+
+        for entry in raw_entries:
+            if not entry:
+                continue
+
+            entry_title = entry.get('title')
+            if not entry_title or entry_title in ['[Private video]', '[Deleted video]']:
+                continue
+
+            video_id = entry.get('id')
+            entry_url = entry.get('url')
+            if not entry_url or not entry_url.startswith('http'):
+                if video_id:
+                    webpage_url = f"https://www.youtube.com/watch?v={video_id}"
+                else:
+                    continue
+            else:
+                webpage_url = entry_url
+
+            thumb = entry.get('thumbnail')
+            if not thumb and entry.get('thumbnails'):
+                thumb = entry['thumbnails'][-1].get('url')
+
+            s = Song(
+                title=entry_title,
+                stream_url="",  # Oynatılacağı an lazy olarak create_source tarafından çekilecek
+                webpage_url=webpage_url,
+                duration=entry.get('duration'),
+                thumbnail=thumb,
+                requester=requester,
+                is_file=False,
+                uploader=entry.get('uploader') or entry.get('channel'),
+                artist_name=entry.get('artist') or entry.get('creator'),
+                song_name=entry.get('track')
+            )
+            songs.append(s)
+
+        return songs, None, playlist_title

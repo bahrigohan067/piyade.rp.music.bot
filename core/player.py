@@ -191,6 +191,38 @@ class GuildMusicPlayer:
             await self.process_next()
             return None
 
+    async def add_playlist_to_queue(self, songs: List[Song], text_channel: discord.TextChannel) -> tuple[bool, int]:
+        """
+        Tüm çalma listesini topluca sıraya ekler.
+        Döner: (hemen_calmaya_basladi_mi, ilk_sarkinin_sira_no)
+        """
+        self.text_channel = text_channel
+        self.cancel_disconnect_timer()
+
+        if not songs:
+            return False, 0
+
+        is_busy = bool(
+            self.voice_client and (
+                self.voice_client.is_playing() or
+                self.voice_client.is_paused() or
+                self.current_song
+            )
+        )
+
+        if is_busy:
+            start_pos = len(self.queue) + 1
+            self.queue.extend(songs)
+            await self.update_panel_message()
+            return False, start_pos
+        else:
+            first_song = songs[0]
+            remaining = songs[1:]
+            self.queue.extend(remaining)
+            self.queue.insert(0, first_song)
+            await self.process_next()
+            return True, 0
+
     async def process_next(self):
         """Kuyruktaki sıradaki parçayı oynatır."""
         async with self.lock:

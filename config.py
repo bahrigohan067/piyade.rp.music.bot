@@ -9,6 +9,9 @@ DISCORD_TOKEN = os.getenv("MUSIC_TOKEN") or os.getenv("DISCORD_TOKEN", "")
 # Müzik Açma İzni Rol ID'si (Varsayılan: 1547589732937240627)
 MUSIC_ROLE_ID = int(os.getenv("MUSIC_ROLE_ID", "1547589732937240627"))
 
+# Çalma Listesi Maksimum Şarkı Limiti (Varsayılan: 100 parça)
+MAX_PLAYLIST_SONGS = int(os.getenv("MAX_PLAYLIST_SONGS", "100"))
+
 # Belirli bir sunucuya anında slash komutu senkronizasyonu için opsiyonel Guild ID
 # Boş bırakılırsa tüm sunucularda global senkronize olur (global senkronizasyon birkaç dakika sürebilir)
 GUILD_ID = int(os.getenv("GUILD_ID")) if os.getenv("GUILD_ID") and os.getenv("GUILD_ID").isdigit() else None

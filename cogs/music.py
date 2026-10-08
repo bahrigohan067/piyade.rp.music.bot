@@ -4,7 +4,7 @@ from discord.ext import commands
 from typing import Dict, Optional
 import config
 from core.player import GuildMusicPlayer
-from core.ytdl import YTDLSource
+from core.ytdl import YTDLSource, is_playlist_url
 from utils.checks import user_has_music_role, check_voice_state
 
 # İzin verilen ses dosyası uzantıları
@@ -68,7 +68,66 @@ class MusicCog(commands.Cog, name="Müzik"):
                 ephemeral=True
             )
 
-        # 4. YouTube'dan şarkıyı ara / getir
+        # 4. YouTube'dan şarkıyı veya çalma listesini ara / getir
+        if is_playlist_url(sarki):
+            songs, error_detail, playlist_title = await YTDLSource.from_playlist(sarki, interaction.user)
+            if not songs:
+                if error_detail == "BOT_CHECK":
+                    err_embed = discord.Embed(
+                        title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                        description=(
+                            "YouTube, çalma listesini çekerken veri merkezi IP adresini engelledi.\n\n"
+                            "💡 **Çözüm:** Railway Variables sekmesinde `YTDLP_COOKIES` değişkenine güncel YouTube cookies ekleyin."
+                        ),
+                        color=config.COLOR_ERROR
+                    )
+                else:
+                    err_embed = discord.Embed(
+                        title="❌ Çalma Listesi Yüklenemedi",
+                        description=f"Çalma listesi bulunamadı veya liste gizli olabilir.\n`{error_detail or 'Bilinmeyen hata'}`",
+                        color=config.COLOR_ERROR
+                    )
+                return await interaction.followup.send(embed=err_embed)
+
+            player = self.get_player(interaction.guild)
+            started_now, queue_pos = await player.add_playlist_to_queue(songs, interaction.channel)
+
+            p_title = playlist_title or "YouTube Çalma Listesi"
+            first_song = songs[0]
+
+            if started_now:
+                embed = discord.Embed(
+                    title=f"{config.EMOJI_CD} Çalma Listesi Başlatıldı!",
+                    description=(
+                        f"📂 **[{p_title}]({sarki})**\n\n"
+                        f"▶️ **Şu Anda Çalıyor:** [{first_song.song_name}]({first_song.webpage_url})\n"
+                        f"📊 **Toplam Eklenen:** `{len(songs)}` adet parça\n"
+                        f"📻 Kanal: <#{interaction.user.voice.channel.id}>\n"
+                        f"✨ Ses kanalı durumu ayarlandı ve kontrol paneli gönderildi!"
+                    ),
+                    color=config.COLOR_PLAYING
+                )
+                if first_song.thumbnail:
+                    embed.set_thumbnail(url=first_song.thumbnail)
+                embed.set_footer(text=f"Sıradaki parça sayısı: {len(player.queue)} | İsteyen: {interaction.user.display_name}")
+                await interaction.followup.send(embed=embed)
+            else:
+                embed = discord.Embed(
+                    title="📥 Çalma Listesi Sıraya Eklendi",
+                    description=(
+                        f"📂 **[{p_title}]({sarki})**\n\n"
+                        f"📊 **Eklenen Parça:** `{len(songs)}` adet\n"
+                        f"🔢 **Kuyruktaki Başlangıç Sırası:** `#{queue_pos}`"
+                    ),
+                    color=config.COLOR_QUEUE
+                )
+                if first_song.thumbnail:
+                    embed.set_thumbnail(url=first_song.thumbnail)
+                embed.set_footer(text=f"Şu anda toplam sırada {len(player.queue)} parça var. | İsteyen: {interaction.user.display_name}")
+                await interaction.followup.send(embed=embed)
+            return
+
+        # Tekil şarkı arama
         song, error_detail = await YTDLSource.from_query(sarki, interaction.user)
         if not song:
             if error_detail == "BOT_CHECK":
@@ -115,6 +174,92 @@ class MusicCog(commands.Cog, name="Müzik"):
                 queued_embed.set_thumbnail(url=song.thumbnail)
             queued_embed.set_footer(text=f"Şu anda sırada {len(player.queue)} parça var.")
             await interaction.followup.send(embed=queued_embed)
+
+    @app_commands.command(
+        name="liste-oynat",
+        description="YouTube veya YouTube Music çalma listesini (playlist) topluca sıraya ekler."
+    )
+    @app_commands.describe(liste_url="YouTube veya YouTube Music çalma listesi bağlantısı")
+    async def liste_oynat(self, interaction: discord.Interaction, liste_url: str):
+        # 1. Rol Yetkisi Kontrolü
+        if not user_has_music_role(interaction.user):
+            embed = discord.Embed(
+                title="⛔ Yetkisiz İşlem",
+                description=f"Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                color=config.COLOR_ERROR
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # 2. Ses Durumu ve Kanal Kilitleme Kontrolü
+        is_ok, err_msg = check_voice_state(interaction)
+        if not is_ok:
+            return await interaction.response.send_message(err_msg, ephemeral=True)
+
+        await interaction.response.defer(ephemeral=False)
+
+        # 3. Ses kanalına bağlan
+        voice_client = await self.ensure_voice_connection(interaction)
+        if not voice_client:
+            return await interaction.followup.send(
+                "❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
+                ephemeral=True
+            )
+
+        songs, error_detail, playlist_title = await YTDLSource.from_playlist(liste_url, interaction.user)
+        if not songs:
+            if error_detail == "BOT_CHECK":
+                err_embed = discord.Embed(
+                    title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                    description=(
+                        "YouTube, çalma listesini çekerken veri merkezi IP adresini engelledi.\n\n"
+                        "💡 **Çözüm:** Railway Variables sekmesinde `YTDLP_COOKIES` değişkenine güncel YouTube cookies ekleyin."
+                    ),
+                    color=config.COLOR_ERROR
+                )
+            else:
+                err_embed = discord.Embed(
+                    title="❌ Çalma Listesi Yüklenemedi",
+                    description=f"Çalma listesi bulunamadı veya liste gizli olabilir.\n`{error_detail or 'Bilinmeyen hata'}`",
+                    color=config.COLOR_ERROR
+                )
+            return await interaction.followup.send(embed=err_embed)
+
+        player = self.get_player(interaction.guild)
+        started_now, queue_pos = await player.add_playlist_to_queue(songs, interaction.channel)
+
+        p_title = playlist_title or "YouTube Çalma Listesi"
+        first_song = songs[0]
+
+        if started_now:
+            embed = discord.Embed(
+                title=f"{config.EMOJI_CD} Çalma Listesi Başlatıldı!",
+                description=(
+                    f"📂 **[{p_title}]({liste_url})**\n\n"
+                    f"▶️ **Şu Anda Çalıyor:** [{first_song.song_name}]({first_song.webpage_url})\n"
+                    f"📊 **Toplam Eklenen:** `{len(songs)}` adet parça\n"
+                    f"📻 Kanal: <#{interaction.user.voice.channel.id}>\n"
+                    f"✨ Ses kanalı durumu ayarlandı ve kontrol paneli gönderildi!"
+                ),
+                color=config.COLOR_PLAYING
+            )
+            if first_song.thumbnail:
+                embed.set_thumbnail(url=first_song.thumbnail)
+            embed.set_footer(text=f"Sıradaki parça sayısı: {len(player.queue)} | İsteyen: {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="📥 Çalma Listesi Sıraya Eklendi",
+                description=(
+                    f"📂 **[{p_title}]({liste_url})**\n\n"
+                    f"📊 **Eklenen Parça:** `{len(songs)}` adet\n"
+                    f"🔢 **Kuyruktaki Başlangıç Sırası:** `#{queue_pos}`"
+                ),
+                color=config.COLOR_QUEUE
+            )
+            if first_song.thumbnail:
+                embed.set_thumbnail(url=first_song.thumbnail)
+            embed.set_footer(text=f"Şu anda toplam sırada {len(player.queue)} parça var. | İsteyen: {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed)
 
     @app_commands.command(
         name="dosya-oynat",
