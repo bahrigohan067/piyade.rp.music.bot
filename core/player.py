@@ -188,7 +188,7 @@ class GuildMusicPlayer:
             return len(self.queue)
         else:
             self.queue.append(song)
-            await self.process_next()
+            asyncio.create_task(self.process_next())
             return None
 
     async def add_playlist_to_queue(self, songs: List[Song], text_channel: discord.TextChannel) -> tuple[bool, int]:
@@ -220,7 +220,7 @@ class GuildMusicPlayer:
             remaining = songs[1:]
             self.queue.extend(remaining)
             self.queue.insert(0, first_song)
-            await self.process_next()
+            asyncio.create_task(self.process_next())
             return True, 0
 
     async def process_next(self):
@@ -250,7 +250,26 @@ class GuildMusicPlayer:
                 source = await YTDLSource.create_source(self.current_song, volume=self.volume)
                 self.current_source = source
             except Exception as e:
-                print(f"[Player Error] Şarkı kaynağı oluşturulamadı: {e}")
+                err_text = str(e)
+                print(f"[Player Error] Şarkı kaynağı oluşturulamadı: {err_text}")
+                if "BOT_CHECK" in err_text or "Sign in to confirm you" in err_text:
+                    if self.text_channel:
+                        err_embed = discord.Embed(
+                            title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                            description=(
+                                "YouTube, bu şarkıyı oynatırken Railway veri merkezi IP adresini engelledi.\n\n"
+                                "💡 **Çözüm:**\n"
+                                "Railway Variables sekmesine `YTDLP_COOKIES` değişkeni olarak YouTube çerezlerini ekleyiniz.\n\n"
+                                "📁 Veya `/dosya-oynat` komutuyla şarkı dosyasını doğrudan Discord üzerinden kesintisiz çalabilirsiniz."
+                            ),
+                            color=config.COLOR_ERROR
+                        )
+                        await self.text_channel.send(embed=err_embed)
+                    self.queue.clear()
+                    self.current_song = None
+                    self.start_disconnect_timer()
+                    return
+
                 if self.text_channel:
                     err_embed = discord.Embed(
                         title="❌ Şarkı Oynatılamadı",

@@ -51,6 +51,10 @@ class PiyadeMusicBot(commands.Bot):
         logger.info(f"🤖 Bot Aktif: {self.user.name} (ID: {self.user.id})")
         logger.info(f"👑 Müzik Yetki Rolü ID: {config.MUSIC_ROLE_ID}")
         logger.info(f"🌐 Bağlı Sunucu Sayısı: {len(self.guilds)}")
+        if config.YTDL_OPTIONS.get('cookiefile'):
+            logger.info("🍪 YouTube Çerez Durumu: Aktif (cookies.txt yüklendi)")
+        else:
+            logger.warning("⚠️ YouTube Çerez Durumu: ÇEREZ BULUNAMADI! (Railway'de YTDLP_COOKIES değişkeni tanımlı değil)")
         logger.info(f"==================================================")
 
         for guild in self.guilds:

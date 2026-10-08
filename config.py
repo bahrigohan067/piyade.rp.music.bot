@@ -70,10 +70,12 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
+    'socket_timeout': 6,
+    'retries': 1,
+    'extractor_retries': 0,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'ios'],
-            'player_skip': ['webpage', 'configs']
+            'player_client': ['android', 'web']
         }
     }
 }
@@ -83,8 +85,13 @@ cookie_content = os.getenv("YTDLP_COOKIES")
 if cookie_content:
     if "\\n" in cookie_content and "\n" not in cookie_content:
         cookie_content = cookie_content.replace("\\n", "\n")
+    # Eski IP'ye bağlı abuse exemption satırlarını temizle
+    lines = [
+        line for line in cookie_content.splitlines()
+        if "GOOGLE_ABUSE_EXEMPTION" not in line
+    ]
     with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write(cookie_content.strip())
+        f.write("\n".join(lines).strip())
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 elif os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 0:
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
@@ -93,7 +100,7 @@ elif os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 0:
 if 'cookiefile' in YTDL_OPTIONS:
     YTDL_OPTIONS['extractor_args'] = {
         'youtube': {
-            'player_client': ['web', 'android']
+            'player_client': ['web', 'mweb', 'android']
         }
     }
 
