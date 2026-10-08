@@ -83,11 +83,19 @@ YTDL_OPTIONS = {
 # Çerez kontrolü (Railway'de YTDLP_COOKIES değişkeni veya projedeki cookies.txt)
 cookie_content = os.getenv("YTDLP_COOKIES")
 if cookie_content:
-    if "\\n" in cookie_content and "\n" not in cookie_content:
-        cookie_content = cookie_content.replace("\\n", "\n")
+    import base64
+    cookie_str = cookie_content.strip()
+    if cookie_str.startswith("IyBO"):
+        try:
+            cookie_str = base64.b64decode(cookie_str).decode('utf-8')
+        except Exception:
+            pass
+    elif "\\n" in cookie_str and "\n" not in cookie_str:
+        cookie_str = cookie_str.replace("\\n", "\n")
+
     # Eski IP'ye bağlı abuse exemption satırlarını temizle
     lines = [
-        line for line in cookie_content.splitlines()
+        line for line in cookie_str.splitlines()
         if "GOOGLE_ABUSE_EXEMPTION" not in line
     ]
     with open("cookies.txt", "w", encoding="utf-8") as f:
