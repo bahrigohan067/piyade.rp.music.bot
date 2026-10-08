@@ -36,6 +36,12 @@ EMOJI_VOL_DOWN = "🔉"
 EMOJI_MUSIC = "🎵"
 EMOJI_LOCK = "🔒"
 
+# Özel İlerleme Çubuğu ve CD Emojileri (Sunucunuzdaki Emojiler)
+EMOJI_CD = "<:60263cd:1557806757550493796>"
+EMOJI_BAR_FILLED = "<:1545483634905976975:1557813129310638150>"
+EMOJI_BAR_KNOB = "<:1545483638974578818:1557810173207253084>"
+EMOJI_BAR_EMPTY = "<:1545483637602910219:1557810153636634775>"
+
 # FFmpeg Akış Yapılandırması (Kopmaları ve gecikmeleri önleyici parametreler)
 FFMPEG_BEFORE_OPTIONS = (
     "-reconnect 1 "

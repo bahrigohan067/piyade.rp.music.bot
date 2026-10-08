@@ -49,18 +49,14 @@ class MusicControlView(ui.View):
             return await interaction.response.send_message("❌ Bot şu anda bağlı değil.", ephemeral=True)
 
         if self.player.voice_client.is_playing():
-            self.player.voice_client.pause()
-            self.player.is_paused = True
+            await self.player.pause()
             button.emoji = config.EMOJI_PLAY
             button.label = "Devam Et"
-            await self.player.update_panel_message()
             await interaction.response.send_message("⏸️ Müzik duraklatıldı.", ephemeral=True)
         elif self.player.voice_client.is_paused():
-            self.player.voice_client.resume()
-            self.player.is_paused = False
+            await self.player.resume()
             button.emoji = config.EMOJI_PAUSE
             button.label = "Duraklat"
-            await self.player.update_panel_message()
             await interaction.response.send_message("▶️ Müzik devam ettiriliyor.", ephemeral=True)
         else:
             await interaction.response.send_message("⚠️ Şu anda çalan bir parça bulunmuyor.", ephemeral=True)

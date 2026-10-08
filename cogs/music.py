@@ -96,8 +96,8 @@ class MusicCog(commands.Cog, name="Müzik"):
         if queue_pos is None:
             # Hemen çalmaya başladı, panel gönderildi
             embed = discord.Embed(
-                title="🎶 Şarkı Başlatılıyor...",
-                description=f"**[{song.title}]({song.webpage_url})**\n\n📻 Kanal: <#{interaction.user.voice.channel.id}>\n🕹️ Şarkıyı aşağıdaki kontrol panelinden yönetebilirsiniz.",
+                title=f"{config.EMOJI_CD} Şarkı Başlatılıyor...",
+                description=f"**[{song.song_name}]({song.webpage_url})** — `{song.artist_name}`\n\n📻 Kanal: <#{interaction.user.voice.channel.id}>\n✨ Ses kanalı durumu ayarlandı ve kontrol paneli gönderildi!",
                 color=config.COLOR_PLAYING
             )
             await interaction.followup.send(embed=embed)
@@ -105,7 +105,7 @@ class MusicCog(commands.Cog, name="Müzik"):
             # Sıraya eklendi
             queued_embed = discord.Embed(
                 title="📥 Sıraya Eklendi",
-                description=f"**[{song.title}]({song.webpage_url})**",
+                description=f"**[{song.song_name}]({song.webpage_url})** — `{song.artist_name}`",
                 color=config.COLOR_QUEUE
             )
             queued_embed.add_field(name="⏱️ Süre", value=f"`{song.formatted_duration}`", inline=True)
@@ -161,15 +161,15 @@ class MusicCog(commands.Cog, name="Müzik"):
 
         if queue_pos is None:
             embed = discord.Embed(
-                title="📁 Ses Dosyası Oynatılıyor...",
-                description=f"**{song.title}**\n\n📻 Kanal: <#{interaction.user.voice.channel.id}>",
+                title=f"{config.EMOJI_CD} Ses Dosyası Oynatılıyor...",
+                description=f"**{song.song_name}**\n\n📻 Kanal: <#{interaction.user.voice.channel.id}>\n✨ Ses kanalı durumu ayarlandı!",
                 color=config.COLOR_PLAYING
             )
             await interaction.followup.send(embed=embed)
         else:
             queued_embed = discord.Embed(
                 title="📁 Ses Dosyası Sıraya Eklendi",
-                description=f"**{song.title}**",
+                description=f"**{song.song_name}**",
                 color=config.COLOR_QUEUE
             )
             queued_embed.add_field(name="📦 Dosya Boyutu", value=f"`{song.formatted_duration}`", inline=True)
@@ -211,7 +211,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         if not player.current_song:
             return await interaction.response.send_message("⚠️ Şu anda çalan bir parça bulunmuyor.", ephemeral=True)
 
-        title = player.current_song.title
+        title = player.current_song.song_name
         player.skip()
         await interaction.response.send_message(f"⏭️ **{title}** parçası atlandı.", ephemeral=False)
 

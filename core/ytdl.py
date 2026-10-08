@@ -8,6 +8,8 @@ from utils.helpers import format_duration, format_bytes
 # yt-dlp örneği
 ytdl = yt_dlp.YoutubeDL(config.YTDL_OPTIONS)
 
+from utils.helpers import format_duration, format_bytes, parse_song_and_artist, clean_title_noise
+
 class Song:
     """Müzik veya ses dosyası verilerini temsil eden sınıf."""
     def __init__(
@@ -21,7 +23,9 @@ class Song:
         is_file: bool = False,
         file_name: Optional[str] = None,
         uploader: Optional[str] = None,
-        file_size: Optional[int] = None
+        file_size: Optional[int] = None,
+        song_name: Optional[str] = None,
+        artist_name: Optional[str] = None
     ):
         self.title = title
         self.stream_url = stream_url
@@ -33,12 +37,21 @@ class Song:
         self.file_name = file_name
         self.uploader = uploader or ("Dosya Yüklemesi" if is_file else "Bilinmiyor")
         self.file_size = file_size
+        
+        if is_file:
+            self.song_name = file_name or clean_title_noise(title)
+            self.artist_name = "Dosya Yüklemesi"
+        else:
+            s_name, a_name = parse_song_and_artist(title, self.uploader, artist_name, song_name)
+            self.song_name = s_name
+            self.artist_name = a_name
 
     @property
     def formatted_duration(self) -> str:
         if self.is_file:
             return f"Dosya ({format_bytes(self.file_size)})" if self.file_size else "Ses Dosyası"
         return format_duration(self.duration)
+
 
 
 import re
@@ -120,7 +133,9 @@ class YTDLSource:
             thumbnail=data.get('thumbnail'),
             requester=requester,
             is_file=False,
-            uploader=data.get('uploader')
+            uploader=data.get('uploader'),
+            artist_name=data.get('artist') or data.get('creator'),
+            song_name=data.get('track')
         )
         return song, None
 

@@ -71,9 +71,13 @@ class PiyadeMusicBot(commands.Bot):
         non_bot_members = [m for m in channel.members if not m.bot]
         if len(non_bot_members) == 0:
             logger.info(f"Kanalda kimse kalmadığı için bot ayrılıyor: {channel.name} ({member.guild.name})")
-            if voice_client.is_playing() or voice_client.is_paused():
-                voice_client.stop()
-            await voice_client.disconnect()
+            cog = self.get_cog("Müzik")
+            if cog and member.guild.id in cog.players:
+                await cog.players[member.guild.id].stop()
+            else:
+                if voice_client.is_playing() or voice_client.is_paused():
+                    voice_client.stop()
+                await voice_client.disconnect()
 
 
 async def main():
