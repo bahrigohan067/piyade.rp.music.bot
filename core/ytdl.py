@@ -113,7 +113,18 @@ class YTDLSource:
                 if fresh_song.artist_name:
                     song.artist_name = fresh_song.artist_name
             else:
-                raise RuntimeError(f"Şarkı akış linki alınamadı: {error_detail or 'Bilinmeyen hata'}")
+                # YouTube veri merkezi IP engeline karşı otomatik SoundCloud yedeği
+                print(f"[YTDL] YouTube akışı alınamadı ({error_detail}). Otomatik SoundCloud yedeği deneniyor: {song.title}")
+                sc_song, sc_err = await cls.from_soundcloud(song.title, song.requester)
+                if sc_song and sc_song.stream_url:
+                    stream_url = sc_song.stream_url
+                    if not song.duration:
+                        song.duration = sc_song.duration
+                    if not song.thumbnail:
+                        song.thumbnail = sc_song.thumbnail
+                    print(f"[YTDL] SoundCloud yedeği başarıyla bağlandı: {sc_song.title}")
+                else:
+                    raise RuntimeError(f"Şarkı akış linki alınamadı: {error_detail or 'Bilinmeyen hata'}")
 
         audio = discord.FFmpegPCMAudio(
             stream_url,
@@ -121,6 +132,62 @@ class YTDLSource:
             options=config.FFMPEG_OPTIONS
         )
         return discord.PCMVolumeTransformer(audio, volume=volume)
+
+    @classmethod
+    async def from_soundcloud(cls, search_query: str, requester: discord.Member) -> tuple[Optional[Song], Optional[str]]:
+        """SoundCloud üzerinden şarkıyı arar ve bulur (IP engeline takılmaz)."""
+        loop = asyncio.get_event_loop()
+        clean_title = clean_title_noise(search_query)
+        sc_query = f"scsearch1:{clean_title}"
+
+        error_detail = None
+        opts = {
+            'format': 'bestaudio/best',
+            'extractaudio': True,
+            'audioformat': 'mp3',
+            'noplaylist': True,
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 6,
+            'retries': 1,
+            'default_search': 'scsearch',
+        }
+
+        def extract():
+            nonlocal error_detail
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(sc_query, download=False)
+            except Exception as e:
+                err_str = str(e)
+                print(f"[SoundCloud Error] {err_str}")
+                error_detail = err_str
+                return None
+
+        data = await loop.run_in_executor(None, extract)
+        if not data:
+            return None, error_detail
+
+        if 'entries' in data:
+            if not data['entries']:
+                return None, error_detail
+            data = data['entries'][0]
+
+        song = Song(
+            title=data.get('title', clean_title),
+            stream_url=data.get('url', ''),
+            webpage_url=data.get('webpage_url', ''),
+            duration=data.get('duration'),
+            thumbnail=data.get('thumbnail'),
+            requester=requester,
+            is_file=False,
+            uploader=data.get('uploader') or "SoundCloud",
+            artist_name=data.get('artist') or data.get('uploader'),
+            song_name=data.get('track') or clean_title
+        )
+        return song, None
 
     @classmethod
     async def from_query(cls, query: str, requester: discord.Member) -> tuple[Optional[Song], Optional[str]]:
@@ -150,6 +217,11 @@ class YTDLSource:
         # Ana döngüyü kilitlememesi için thread içinde çalıştır
         data = await loop.run_in_executor(None, extract)
         if not data:
+            if error_detail == "BOT_CHECK":
+                print(f"[YTDL] YouTube bot engeli nedeniyle SoundCloud deneniyor: {query}")
+                sc_song, sc_err = await cls.from_soundcloud(query, requester)
+                if sc_song:
+                    return sc_song, None
             return None, error_detail
 
         # Arama sonucu liste ise ilk elemanı al
