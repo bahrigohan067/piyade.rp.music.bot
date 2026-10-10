@@ -55,7 +55,7 @@ FFMPEG_BEFORE_OPTIONS = (
     "-nostdin"
 )
 
-FFMPEG_OPTIONS = "-vn -ar 48000 -ac 2"
+FFMPEG_OPTIONS = "-vn"
 
 # yt-dlp Yapılandırması (En yüksek ses kalitesi ve Discord uyumluluğu)
 YTDL_OPTIONS = {
@@ -75,7 +75,7 @@ YTDL_OPTIONS = {
     'extractor_retries': 0,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web']
+            'player_client': ['android', 'ios']
         }
     }
 }
@@ -104,11 +104,11 @@ if cookie_content:
 elif os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 0:
     YTDL_OPTIONS['cookiefile'] = "cookies.txt"
 
-# Eğer çerez tanımlandıysa standart istemcileri kullanarak tam yetkiyle çalıştır
+# Mobil istemcileri kullan (Sunucu/Veri merkezi IP bot engeline takılmaz)
 if 'cookiefile' in YTDL_OPTIONS:
     YTDL_OPTIONS['extractor_args'] = {
         'youtube': {
-            'player_client': ['web', 'mweb', 'android']
+            'player_client': ['android', 'ios', 'mweb']
         }
     }
 

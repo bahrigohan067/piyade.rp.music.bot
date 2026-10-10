@@ -174,13 +174,17 @@ class YTDLSource:
         if not entries:
             return None, error_detail or "Arama sonucu bulunamadı"
 
+        is_user_requesting_slowed = "slowed" in search_query.lower()
+
         valid_entry = None
-        # İlk olarak bası patlak / earrape / bozuk remix olmayan temiz kaydı ara
+        # İlk olarak bası patlak / earrape / bozuk remix veya kullanıcı istemediği halde slowed/deep slowed olanları ele
         for entry in entries:
             if not entry or not entry.get('url'):
                 continue
             e_title = (entry.get('title') or '').lower()
-            if any(bad in e_title for bad in ['bass boosted', 'earrape', 'distorted', '8d audio', 'nightcore']):
+            if not is_user_requesting_slowed and any(bad in e_title for bad in ['slowed', 'deep slowed', 'reverb', 'speed up', 'nightcore', 'chipmunk']):
+                continue
+            if any(bad in e_title for bad in ['bass boosted', 'earrape', 'distorted', '8d audio']):
                 continue
             valid_entry = entry
             break
