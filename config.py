@@ -80,14 +80,18 @@ YTDL_OPTIONS = {
     }
 }
 
-# Çerez kontrolü (Railway'de YTDLP_COOKIES değişkeni veya projedeki cookies.txt)
-cookie_content = os.getenv("YTDLP_COOKIES")
-if cookie_content:
+# Çerez Token Kontrolü (Railway Variables: YTDLP_TOKEN veya YTDLP_COOKIES)
+cookie_token = os.getenv("YTDLP_TOKEN") or os.getenv("YTDLP_COOKIES")
+if cookie_token:
     import base64
-    cookie_str = cookie_content.strip()
-    if cookie_str.startswith("IyBO"):
+    import tempfile
+    cookie_str = cookie_token.strip()
+    # Base64 formatındaki token'ı otomatik çöz
+    if cookie_str.startswith("IyBO") or len(cookie_str) > 100:
         try:
-            cookie_str = base64.b64decode(cookie_str).decode('utf-8')
+            decoded = base64.b64decode(cookie_str).decode('utf-8')
+            if "Netscape" in decoded or "\t" in decoded:
+                cookie_str = decoded
         except Exception:
             pass
     elif "\\n" in cookie_str and "\n" not in cookie_str:
@@ -96,13 +100,13 @@ if cookie_content:
     # Eski IP'ye bağlı abuse exemption satırlarını temizle
     lines = [
         line for line in cookie_str.splitlines()
-        if "GOOGLE_ABUSE_EXEMPTION" not in line
+        if "GOOGLE_ABUSE_EXEMPTION" not in line and line.strip()
     ]
-    with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(lines).strip())
-    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
-elif os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 0:
-    YTDL_OPTIONS['cookiefile'] = "cookies.txt"
+    # Proje dizininde kalıcı dosya oluşturmak yerine sistem geçici dizininde oluştur
+    temp_cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookie_token.txt")
+    with open(temp_cookie_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines).strip() + "\n")
+    YTDL_OPTIONS['cookiefile'] = temp_cookie_path
 
 # Mobil istemcileri kullan (Sunucu/Veri merkezi IP bot engeline takılmaz)
 if 'cookiefile' in YTDL_OPTIONS:

@@ -12,6 +12,7 @@ ENV/
 # Environment Variables & Secrets
 .env
 cookies.txt
+*cookie*.txt
 
 # Logs
 *.log

@@ -154,14 +154,13 @@ class GuildMusicPlayer:
             pass
 
     def start_status_loop(self):
-        """Periyodik olarak ilerleme çubuğunu ve ses kanalı durumunu güncelleyen arka plan görevi."""
+        """Periyodik olarak ilerleme çubuğunu güncelleyen arka plan görevi."""
         self.stop_status_loop()
         async def status_updater():
             while self.voice_client and self.current_song:
                 try:
-                    await asyncio.sleep(25)  # 25 saniyede bir güncelle (rate limit korumalı)
+                    await asyncio.sleep(25)  # 25 saniyede bir paneli güncelle (rate limit korumalı)
                     if self.voice_client and self.current_song and not self.is_paused:
-                        await self.update_voice_channel_status()
                         await self.update_panel_message()
                 except asyncio.CancelledError:
                     break
