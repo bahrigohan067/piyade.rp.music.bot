@@ -97,7 +97,8 @@ class GuildMusicPlayer:
         if len(artist_name) > 24:
             artist_name = artist_name[:21] + "..."
 
-        prefix = "⏸️ " if self.is_paused else "💿 "
+        cd_emoji = config.EMOJI_CD or "<a:60263cd:1557833161508003871>"
+        prefix = "⏸️ " if self.is_paused else f"{cd_emoji} "
         
         # İlerleme çubuğu ses kanalı durumunda olmayacak, sade ve şık gösterim
         return f"{prefix}{song_name} - {artist_name}"
