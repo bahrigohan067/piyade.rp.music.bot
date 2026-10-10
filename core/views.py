@@ -130,7 +130,7 @@ class MusicControlView(ui.View):
 
     @ui.button(label="Ses +", style=discord.ButtonStyle.secondary, emoji=config.EMOJI_VOL_UP, row=1)
     async def vol_up_button(self, interaction: discord.Interaction, button: ui.Button):
-        new_vol = min(1.5, round(self.player.volume + 0.1, 1))
+        new_vol = min(1.0, round(self.player.volume + 0.1, 1))
         self.player.set_volume(new_vol)
         await self.player.update_panel_message()
         await interaction.response.send_message(f"🔊 Ses düzeyi: **%{int(new_vol * 100)}**", ephemeral=True)

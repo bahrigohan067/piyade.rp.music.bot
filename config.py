@@ -55,13 +55,11 @@ FFMPEG_BEFORE_OPTIONS = (
     "-nostdin"
 )
 
-FFMPEG_OPTIONS = "-vn"
+FFMPEG_OPTIONS = "-vn -ar 48000 -ac 2"
 
-# yt-dlp Yapılandırması
+# yt-dlp Yapılandırması (En yüksek ses kalitesi ve Discord uyumluluğu)
 YTDL_OPTIONS = {
-    'format': 'bestaudio/best',
-    'extractaudio': True,
-    'audioformat': 'mp3',
+    'format': 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio/best',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,

@@ -113,9 +113,9 @@ class YTDLSource:
                 if fresh_song.artist_name:
                     song.artist_name = fresh_song.artist_name
             else:
-                # YouTube veri merkezi IP engeline karşı otomatik SoundCloud yedeği
-                print(f"[YTDL] YouTube akışı alınamadı ({error_detail}). Otomatik SoundCloud yedeği deneniyor: {song.title}")
-                sc_song, sc_err = await cls.from_soundcloud(song.title, song.requester)
+                search_term = f"{song.artist_name} - {song.song_name}" if (song.artist_name and song.song_name) else song.title
+                print(f"[YTDL] YouTube akışı alınamadı ({error_detail}). Otomatik SoundCloud yedeği deneniyor: {search_term}")
+                sc_song, sc_err = await cls.from_soundcloud(search_term, song.requester)
                 if sc_song and sc_song.stream_url:
                     stream_url = sc_song.stream_url
                     if not song.duration:
@@ -175,13 +175,22 @@ class YTDLSource:
             return None, error_detail or "Arama sonucu bulunamadı"
 
         valid_entry = None
+        # İlk olarak bası patlak / earrape / bozuk remix olmayan temiz kaydı ara
         for entry in entries:
-            if not entry:
+            if not entry or not entry.get('url'):
                 continue
-            # Akış URL'si olan ilk geçerli (DRM'siz) kaydı seç
-            if entry.get('url'):
-                valid_entry = entry
-                break
+            e_title = (entry.get('title') or '').lower()
+            if any(bad in e_title for bad in ['bass boosted', 'earrape', 'distorted', '8d audio', 'nightcore']):
+                continue
+            valid_entry = entry
+            break
+
+        # Temiz bulunamadıysa çalışan ilk kaydı al
+        if not valid_entry:
+            for entry in entries:
+                if entry and entry.get('url'):
+                    valid_entry = entry
+                    break
 
         if not valid_entry:
             return None, error_detail or "Geçerli ses akışı bulunamadı (DRM korumalı veya silinmiş olabilir)"

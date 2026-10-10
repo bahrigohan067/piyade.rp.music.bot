@@ -51,7 +51,8 @@ class GuildMusicPlayer:
         return max(0.0, current - self.start_time - self.total_paused_duration)
 
     def set_volume(self, volume: float):
-        self.volume = max(0.0, min(1.5, volume))
+        # Maksimum ses %100 (1.0) ile sınırlandırılır; üzeri dijital ses patlamasına (clipping) yol açar
+        self.volume = max(0.0, min(1.0, volume))
         if self.current_source:
             self.current_source.volume = self.volume
 
