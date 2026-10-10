@@ -43,6 +43,17 @@ class MusicControlView(ui.View):
 
         return True
 
+    @ui.button(label="Önceki", style=discord.ButtonStyle.secondary, emoji=config.EMOJI_PREVIOUS, row=0)
+    async def previous_button(self, interaction: discord.Interaction, button: ui.Button):
+        if not self.player.voice_client or not self.player.voice_client.is_connected():
+            return await interaction.response.send_message("❌ Bot şu anda bağlı değil.", ephemeral=True)
+
+        success, msg = await self.player.previous()
+        if success:
+            await interaction.response.send_message(f"⏮️ {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ {msg}", ephemeral=True)
+
     @ui.button(label="Duraklat / Devam", style=discord.ButtonStyle.primary, emoji=config.EMOJI_PAUSE, row=0)
     async def pause_resume_button(self, interaction: discord.Interaction, button: ui.Button):
         if not self.player.voice_client or not self.player.voice_client.is_connected():
@@ -94,6 +105,11 @@ class MusicControlView(ui.View):
     @ui.button(label="Kuyruk", style=discord.ButtonStyle.secondary, emoji=config.EMOJI_QUEUE, row=1)
     async def queue_button(self, interaction: discord.Interaction, button: ui.Button):
         embed = self.player.create_queue_embed()
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @ui.button(label="Geçmiş", style=discord.ButtonStyle.secondary, emoji=config.EMOJI_HISTORY, row=1)
+    async def history_button(self, interaction: discord.Interaction, button: ui.Button):
+        embed = self.player.create_history_embed()
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @ui.button(label="Karıştır", style=discord.ButtonStyle.secondary, emoji=config.EMOJI_SHUFFLE, row=1)

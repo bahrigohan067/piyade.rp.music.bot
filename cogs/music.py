@@ -338,6 +338,43 @@ class MusicCog(commands.Cog, name="Müzik"):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
+        name="gecmis",
+        description="Son çalınan şarkıların geçmişini listeler."
+    )
+    async def gecmis(self, interaction: discord.Interaction):
+        if not user_has_music_role(interaction.user):
+            return await interaction.response.send_message(
+                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                ephemeral=True
+            )
+
+        player = self.get_player(interaction.guild)
+        embed = player.create_history_embed()
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="onceki",
+        description="Geçmişte çalınan bir önceki şarkıya geri döner."
+    )
+    async def onceki(self, interaction: discord.Interaction):
+        if not user_has_music_role(interaction.user):
+            return await interaction.response.send_message(
+                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                ephemeral=True
+            )
+
+        is_ok, err_msg = check_voice_state(interaction)
+        if not is_ok:
+            return await interaction.response.send_message(err_msg, ephemeral=True)
+
+        player = self.get_player(interaction.guild)
+        success, msg = await player.previous()
+        if success:
+            await interaction.response.send_message(f"⏮️ {msg}", ephemeral=False)
+        else:
+            await interaction.response.send_message(f"⚠️ {msg}", ephemeral=True)
+
+    @app_commands.command(
         name="atla",
         description="Şu anda çalan şarkıyı atlayarak sıradakine geçer."
     )

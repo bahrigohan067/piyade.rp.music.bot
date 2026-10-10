@@ -29,9 +29,11 @@ COLOR_QUEUE = 0xEB459E      # Pembe (Kuyruk)
 # Emojiler
 EMOJI_PLAY = "▶️"
 EMOJI_PAUSE = "⏸️"
+EMOJI_PREVIOUS = "⏮️"
 EMOJI_SKIP = "⏭️"
 EMOJI_STOP = "⏹️"
 EMOJI_QUEUE = "📜"
+EMOJI_HISTORY = "🕰️"
 EMOJI_LOOP = "🔁"
 EMOJI_SHUFFLE = "🔀"
 EMOJI_VOL_UP = "🔊"

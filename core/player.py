@@ -13,6 +13,7 @@ class GuildMusicPlayer:
         self.bot = bot
         self.guild = guild
         self.queue: List[Song] = []
+        self.history: List[Song] = []
         self.current_song: Optional[Song] = None
         self.current_source: Optional[discord.PCMVolumeTransformer] = None
         self.text_channel: Optional[discord.TextChannel] = None
@@ -23,6 +24,7 @@ class GuildMusicPlayer:
         self.volume: float = 0.8
         self.is_paused: bool = False
         self.skip_loop_once: bool = False
+        self.is_going_previous: bool = False
         
         # Süre ve ilerleme takibi
         self.start_time: float = 0.0
@@ -226,12 +228,25 @@ class GuildMusicPlayer:
     async def process_next(self):
         """Kuyruktaki sıradaki parçayı oynatır."""
         async with self.lock:
-            # Döngü mantığı kontrolü
-            if self.current_song and not self.skip_loop_once:
-                if self.loop_mode == "song":
-                    self.queue.insert(0, self.current_song)
-                elif self.loop_mode == "queue":
-                    self.queue.append(self.current_song)
+            # Geriye gidiliyorsa döngü veya geçmişe ekleme mantığını atla
+            if self.is_going_previous:
+                self.is_going_previous = False
+            else:
+                # Döngü veya geçmiş mantığı
+                if self.current_song and not self.skip_loop_once:
+                    if self.loop_mode == "song":
+                        self.queue.insert(0, self.current_song)
+                    elif self.loop_mode == "queue":
+                        self.queue.append(self.current_song)
+                    else:
+                        self.history.append(self.current_song)
+                        if len(self.history) > 50:
+                            self.history.pop(0)
+                elif self.current_song and self.skip_loop_once:
+                    # Şarkı atlandığında da geçmişe ekle
+                    self.history.append(self.current_song)
+                    if len(self.history) > 50:
+                        self.history.pop(0)
 
             self.skip_loop_once = False
 
@@ -277,6 +292,7 @@ class GuildMusicPlayer:
                         color=config.COLOR_ERROR
                     )
                     await self.text_channel.send(embed=err_embed)
+                self.current_song = None
                 return await self.process_next()
 
             def after_playing(error):
@@ -334,11 +350,38 @@ class GuildMusicPlayer:
         if self.voice_client and (self.voice_client.is_playing() or self.voice_client.is_paused()):
             self.voice_client.stop()
 
+    async def previous(self) -> tuple[bool, str]:
+        """Önceki dinlenen şarkıya geri döner."""
+        async with self.lock:
+            if not self.history:
+                return False, "Geçmişte dinlenmiş bir önceki şarkı bulunmuyor."
+
+            prev_song = self.history.pop()
+
+            # Eğer şu an çalan bir şarkı varsa onu sıranın başına geri koy (ileri atla butonuyla tekrar dinlenebilmesi için)
+            if self.current_song:
+                self.queue.insert(0, self.current_song)
+                self.current_song = None
+
+            # Önceki şarkıyı kuyruğun en başına koy
+            self.queue.insert(0, prev_song)
+            self.is_going_previous = True
+            self.stop_status_loop()
+
+            if self.voice_client and (self.voice_client.is_playing() or self.voice_client.is_paused()):
+                self.voice_client.stop()
+            else:
+                asyncio.create_task(self.process_next())
+
+            return True, f"Önceki parçaya dönüldü: **{prev_song.title}**"
+
     async def stop(self):
-        """Müziği tamamen durdurur, kuyruğu temizler, ses durumunu sıfırlar ve kanaldan ayrılır."""
+        """Müziği tamamen durdurur, kuyruğu ve geçmişi temizler, ses durumunu sıfırlar ve kanaldan ayrılır."""
         self.queue.clear()
+        self.history.clear()
         self.current_song = None
         self.is_paused = False
+        self.is_going_previous = False
         self.stop_status_loop()
         await self.clear_voice_channel_status()
         self.cancel_disconnect_timer()
@@ -428,12 +471,27 @@ class GuildMusicPlayer:
             value=f"<#{self.voice_client.channel.id}>" if self.voice_client and self.voice_client.channel else "`Bilinmiyor`",
             inline=True
         )
+        embed.add_field(
+            name="🕰️ Dinleme Geçmişi",
+            value=f"`{len(self.history)} parça`",
+            inline=True
+        )
+        prev_name = "Yok"
+        if self.history:
+            prev_name = self.history[-1].song_name or self.history[-1].title
+            if len(prev_name) > 22:
+                prev_name = prev_name[:19] + "..."
+        embed.add_field(
+            name="⏮️ Önceki Parça",
+            value=f"`{prev_name}`",
+            inline=True
+        )
 
         if self.current_song.thumbnail:
             embed.set_thumbnail(url=self.current_song.thumbnail)
 
         embed.set_footer(
-            text=f"Piyade RP Müzik Sistemi • Ses Kanalı Durumu: Aktif"
+            text=f"Piyade RP Müzik Sistemi • ⏮️ Önceki Şarkı / ⏭️ Sonraki Şarkı"
         )
         return embed
 
@@ -512,4 +570,28 @@ class GuildMusicPlayer:
             embed.description = "\n".join(lines)
 
         embed.set_footer(text=f"Toplam Sıradaki Şarkı: {len(self.queue)} | Döngü: {self.loop_mode.capitalize()}")
+        return embed
+
+    def create_history_embed(self) -> discord.Embed:
+        """Dinlenmiş önceki şarkıların geçmişini gösteren embed oluşturur."""
+        embed = discord.Embed(
+            title="🕰️ Dinleme Geçmişi",
+            color=config.COLOR_QUEUE
+        )
+
+        if not self.history:
+            embed.description = "Geçmişte dinlenmiş şarkı bulunmuyor."
+        else:
+            lines = []
+            # En son dinlenen en üstte olacak şekilde ters sırala
+            for i, song in enumerate(reversed(self.history[-10:]), start=1):
+                req_mention = song.requester.mention if song.requester else "Bilinmiyor"
+                lines.append(f"`{i}.` **[{song.title}]({song.webpage_url})** (`{song.formatted_duration}`) - {req_mention}")
+
+            if len(self.history) > 10:
+                lines.append(f"\n*...ve {len(self.history) - 10} şarkı daha geçmişte kayıtlı.*")
+
+            embed.description = "\n".join(lines)
+
+        embed.set_footer(text=f"Toplam Geçmiş: {len(self.history)} parça • Önceki şarkıya dönmek için ⏮️ butonunu kullanın")
         return embed
