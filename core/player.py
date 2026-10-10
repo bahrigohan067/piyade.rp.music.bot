@@ -249,61 +249,66 @@ class GuildMusicPlayer:
                         self.history.pop(0)
 
             self.skip_loop_once = False
+            self.current_song = None
 
-            if not self.queue:
-                self.current_song = None
-                self.is_paused = False
-                self.stop_status_loop()
-                await self.clear_voice_channel_status()
-                await self.show_queue_finished_panel()
-                self.start_disconnect_timer()
-                return
-
-            self.current_song = self.queue.pop(0)
-
-            try:
-                source = await YTDLSource.create_source(self.current_song, volume=self.volume)
-                self.current_source = source
-            except Exception as e:
-                err_text = str(e)
-                print(f"[Player Error] Şarkı kaynağı oluşturulamadı: {err_text}")
-                if "BOT_CHECK" in err_text or "Sign in to confirm you" in err_text:
-                    if self.text_channel:
-                        err_embed = discord.Embed(
-                            title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
-                            description=(
-                                "YouTube, bu şarkıyı oynatırken Railway veri merkezi IP adresini engelledi.\n\n"
-                                "💡 **Çözüm:**\n"
-                                "Railway Variables sekmesine `YTDLP_COOKIES` değişkeni olarak YouTube çerezlerini ekleyiniz.\n\n"
-                                "📁 Veya `/dosya-oynat` komutuyla şarkı dosyasını doğrudan Discord üzerinden kesintisiz çalabilirsiniz."
-                            ),
-                            color=config.COLOR_ERROR
-                        )
-                        await self.text_channel.send(embed=err_embed)
-                    self.queue.clear()
+            # Şarkı yükleme döngüsü (Silinmiş veya DRM hatalı şarkılar kilitlenme/deadlock olmadan atlanır)
+            while True:
+                if not self.queue:
                     self.current_song = None
+                    self.is_paused = False
+                    self.stop_status_loop()
+                    await self.clear_voice_channel_status()
+                    await self.show_queue_finished_panel()
                     self.start_disconnect_timer()
                     return
 
-                if self.text_channel:
-                    err_embed = discord.Embed(
-                        title="❌ Şarkı Oynatılamadı",
-                        description=f"**{self.current_song.title}** parçası yüklenirken bir sorun oluştu, sıradaki parçaya geçiliyor.",
-                        color=config.COLOR_ERROR
-                    )
-                    await self.text_channel.send(embed=err_embed)
-                self.current_song = None
-                return await self.process_next()
+                candidate_song = self.queue.pop(0)
+
+                try:
+                    source = await YTDLSource.create_source(candidate_song, volume=self.volume)
+                    self.current_song = candidate_song
+                    self.current_source = source
+                    break
+                except Exception as e:
+                    err_text = str(e)
+                    print(f"[Player Error] Şarkı kaynağı oluşturulamadı ({candidate_song.title}): {err_text}")
+                    if "BOT_CHECK" in err_text or "Sign in to confirm you" in err_text:
+                        if self.text_channel:
+                            err_embed = discord.Embed(
+                                title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                                description=(
+                                    "YouTube, bu şarkıyı oynatırken Railway veri merkezi IP adresini engelledi.\n\n"
+                                    "💡 **Çözüm:**\n"
+                                    "Railway Variables sekmesine `YTDLP_COOKIES` değişkeni olarak YouTube çerezlerini ekleyiniz.\n\n"
+                                    "📁 Veya `/dosya-oynat` komutuyla şarkı dosyasını doğrudan Discord üzerinden kesintisiz çalabilirsiniz."
+                                ),
+                                color=config.COLOR_ERROR
+                            )
+                            await self.text_channel.send(embed=err_embed)
+                        self.queue.clear()
+                        self.current_song = None
+                        self.start_disconnect_timer()
+                        return
+
+                    failed_title = candidate_song.title if candidate_song else "Bilinmeyen Şarkı"
+                    if self.text_channel:
+                        err_embed = discord.Embed(
+                            title="⚠️ Parça Atlandı (Kullanılamıyor)",
+                            description=f"**{failed_title}** parçası silinmiş, gizli veya kullanılamıyor.\nSıradaki parçaya geçiliyor...",
+                            color=config.COLOR_ERROR
+                        )
+                        try:
+                            await self.text_channel.send(embed=err_embed)
+                        except Exception:
+                            pass
+                    # Kilitlenme (deadlock) olmaması için recursion yerine döngüyle bir sonrakine geç
+                    continue
 
             def after_playing(error):
                 if error:
                     print(f"[Playback Error] {error}")
-                coro = self.process_next()
-                fut = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
-                try:
-                    fut.result()
-                except Exception as exc:
-                    print(f"[After Callback Error] {exc}")
+                # AudioPlayer thread'ini bloklamadan ana olay döngüsünde sıradakini başlat
+                asyncio.run_coroutine_threadsafe(self.process_next(), self.bot.loop)
 
             if self.voice_client and self.voice_client.is_connected():
                 self.voice_client.play(source, after=after_playing)

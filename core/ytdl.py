@@ -138,7 +138,7 @@ class YTDLSource:
         """SoundCloud üzerinden şarkıyı arar ve bulur (IP engeline takılmaz)."""
         loop = asyncio.get_event_loop()
         clean_title = clean_title_noise(search_query)
-        sc_query = f"scsearch1:{clean_title}"
+        sc_query = f"scsearch5:{clean_title}"
 
         error_detail = None
         opts = {
@@ -147,7 +147,7 @@ class YTDLSource:
             'audioformat': 'mp3',
             'noplaylist': True,
             'nocheckcertificate': True,
-            'ignoreerrors': False,
+            'ignoreerrors': True,
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 6,
@@ -170,22 +170,33 @@ class YTDLSource:
         if not data:
             return None, error_detail
 
-        if 'entries' in data:
-            if not data['entries']:
-                return None, error_detail
-            data = data['entries'][0]
+        entries = data.get('entries') if 'entries' in data else [data]
+        if not entries:
+            return None, error_detail or "Arama sonucu bulunamadı"
+
+        valid_entry = None
+        for entry in entries:
+            if not entry:
+                continue
+            # Akış URL'si olan ilk geçerli (DRM'siz) kaydı seç
+            if entry.get('url'):
+                valid_entry = entry
+                break
+
+        if not valid_entry:
+            return None, error_detail or "Geçerli ses akışı bulunamadı (DRM korumalı veya silinmiş olabilir)"
 
         song = Song(
-            title=data.get('title', clean_title),
-            stream_url=data.get('url', ''),
-            webpage_url=data.get('webpage_url', ''),
-            duration=data.get('duration'),
-            thumbnail=data.get('thumbnail'),
+            title=valid_entry.get('title', clean_title),
+            stream_url=valid_entry.get('url', ''),
+            webpage_url=valid_entry.get('webpage_url', ''),
+            duration=valid_entry.get('duration'),
+            thumbnail=valid_entry.get('thumbnail'),
             requester=requester,
             is_file=False,
-            uploader=data.get('uploader') or "SoundCloud",
-            artist_name=data.get('artist') or data.get('uploader'),
-            song_name=data.get('track') or clean_title
+            uploader=valid_entry.get('uploader') or "SoundCloud",
+            artist_name=valid_entry.get('artist') or valid_entry.get('uploader'),
+            song_name=valid_entry.get('track') or clean_title
         )
         return song, None
 
@@ -312,8 +323,19 @@ class YTDLSource:
             if not entry:
                 continue
 
-            entry_title = entry.get('title')
-            if not entry_title or entry_title in ['[Private video]', '[Deleted video]']:
+            entry_title = (entry.get('title') or "").strip()
+            if not entry_title:
+                continue
+
+            # Silinmiş, gizli veya kullanılamayan video başlıklarını listeye hiç ekleme
+            lower_title = entry_title.lower()
+            if any(term in lower_title for term in [
+                'deleted video', 'private video', 'unavailable video',
+                'silinen video', 'silinmiş video', 'gizli video', 'kullanılamayan video'
+            ]):
+                continue
+
+            if entry.get('availability') in ['private', 'subscriber_only', 'needs_auth']:
                 continue
 
             video_id = entry.get('id')
