@@ -75,7 +75,7 @@ YTDL_OPTIONS = {
     'extractor_retries': 0,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'ios']
+            'player_client': ['android', 'ios', 'mweb', 'web_safari']
         }
     }
 }

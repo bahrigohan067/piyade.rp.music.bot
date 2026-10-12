@@ -92,6 +92,82 @@ def clean_youtube_query(query: str) -> str:
     return query
 
 
+def extract_title_from_youtube_url(url: str) -> Optional[str]:
+    """YouTube URL'sinden oEmbed veya HTML üzerinden video başlığını çıkarır."""
+    try:
+        import urllib.request
+        import json
+        oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+        req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data.get('title')
+    except Exception:
+        pass
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+            m = re.search(r'<title>(.*?)</title>', html)
+            if m:
+                title = m.group(1).replace(" - YouTube", "").strip()
+                return title
+    except Exception:
+        pass
+    return None
+
+
+def resolve_spotify_query(query: str) -> Optional[str]:
+    """
+    Spotify şarkı URL'sini (open.spotify.com/track/...) analiz eder ve
+    YouTube araması için 'Sanatçı - Şarkı Adı' formatında temiz arama terimi döner.
+    Bu sayede Spotify DRM kısıtlamasına (30 saniyelik önizleme) takılmadan
+    YouTube üzerinden TAM parça dinlenir.
+    """
+    if "spotify.com" not in query.lower() or "/track/" not in query.lower():
+        return None
+
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            query,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+
+        og_title = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+        og_desc = re.search(r'<meta property="og:description" content="([^"]+)"', html)
+
+        track_name = og_title.group(1).strip() if og_title else None
+        artist_name = None
+
+        if og_desc:
+            desc_text = og_desc.group(1)
+            parts = re.split(r'\s*[·•\-]\s*', desc_text)
+            if parts and parts[0].strip():
+                artist_name = parts[0].strip()
+
+        if not artist_name:
+            title_tag = re.search(r'<title>([^<]+)</title>', html)
+            if title_tag:
+                m = re.search(r'by\s+(.*?)\s*\|\s*Spotify', title_tag.group(1), re.IGNORECASE)
+                if m:
+                    artist_name = m.group(1).strip()
+
+        if track_name and artist_name:
+            clean_track = clean_title_noise(track_name)
+            clean_art = clean_title_noise(artist_name)
+            return f"{clean_art} - {clean_track}"
+        elif track_name:
+            return clean_title_noise(track_name)
+    except Exception as e:
+        print(f"[Spotify Resolver Error] {e}")
+
+    return None
+
+
 class YTDLSource:
     """YouTube ve dosya ses kaynaklarını yöneten yardımcı sınıf."""
 
@@ -137,6 +213,14 @@ class YTDLSource:
     async def from_soundcloud(cls, search_query: str, requester: discord.Member) -> tuple[Optional[Song], Optional[str]]:
         """SoundCloud üzerinden şarkıyı arar ve bulur (IP engeline takılmaz)."""
         loop = asyncio.get_event_loop()
+        
+        # Eğer bir YouTube linki doğrudan yedek olarak düştüyse, başlığı çekip SoundCloud'da arat
+        if "youtube.com" in search_query or "youtu.be" in search_query:
+            yt_title = await loop.run_in_executor(None, extract_title_from_youtube_url, search_query)
+            if yt_title:
+                print(f"[SoundCloud] YouTube URL başlığı çözümlendi: '{yt_title}' -> SoundCloud'da aranıyor.")
+                search_query = yt_title
+
         clean_title = clean_title_noise(search_query)
         sc_query = f"scsearch5:{clean_title}"
 
@@ -186,13 +270,20 @@ class YTDLSource:
                 continue
             if any(bad in e_title for bad in ['bass boosted', 'earrape', 'distorted', '8d audio']):
                 continue
+            # Go+ önizleme filtresi: 30 saniyelik kırpılmış Go+ önizlemelerini ele
+            dur = entry.get('duration') or 0
+            if 0 < dur <= 35:
+                continue
             valid_entry = entry
             break
 
-        # Temiz bulunamadıysa çalışan ilk kaydı al
+        # Temiz bulunamadıysa çalışan ilk kaydı al (yine de 30s Go+ önizleme olmamasına dikkat et)
         if not valid_entry:
             for entry in entries:
                 if entry and entry.get('url'):
+                    dur = entry.get('duration') or 0
+                    if 0 < dur <= 35:
+                        continue
                     valid_entry = entry
                     break
 
@@ -218,6 +309,13 @@ class YTDLSource:
         """Arama terimi veya YouTube URL'sinden (Song, error_type) döndürür."""
         loop = asyncio.get_event_loop()
         
+        # Spotify şarkı linki kontrolü (30 saniyelik önizleme yerine tam parça için YouTube'a yönlendir)
+        if "spotify.com" in query.lower() and "/track/" in query.lower():
+            spotify_resolved = await loop.run_in_executor(None, resolve_spotify_query, query)
+            if spotify_resolved:
+                print(f"[Spotify] Spotify parçası çözümlendi: '{spotify_resolved}' -> YouTube'da tam sürüm aranıyor.")
+                query = spotify_resolved
+
         query = clean_youtube_query(query)
         search_query = query if query.startswith(('http://', 'https://')) else f"ytsearch1:{query}"
 
