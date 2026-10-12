@@ -25,6 +25,7 @@ class GuildMusicPlayer:
         self.is_paused: bool = False
         self.skip_loop_once: bool = False
         self.is_going_previous: bool = False
+        self.is_manual_skip: bool = False
         
         # Süre ve ilerleme takibi
         self.start_time: float = 0.0
@@ -229,25 +230,52 @@ class GuildMusicPlayer:
     async def process_next(self):
         """Kuyruktaki sıradaki parçayı oynatır."""
         async with self.lock:
+            manual_skip = self.is_manual_skip or self.skip_loop_once
+            self.is_manual_skip = False
+
             # Geriye gidiliyorsa döngü veya geçmişe ekleme mantığını atla
             if self.is_going_previous:
                 self.is_going_previous = False
             else:
-                # Döngü veya geçmiş mantığı
-                if self.current_song and not self.skip_loop_once:
-                    if self.loop_mode == "song":
-                        self.queue.insert(0, self.current_song)
-                    elif self.loop_mode == "queue":
-                        self.queue.append(self.current_song)
-                    else:
+                elapsed = self.elapsed_seconds
+                song_dur = self.current_song.duration if self.current_song else 0
+
+                # Erken kopma tespiti (YouTube CDN 403 veya soket düşmesi):
+                # Şarkı kullanıcı tarafından manuel geçilmediyse, dosya değilse, süresi 40s'den uzunsa
+                # ancak 25 saniyeden önce sonlandıysa ve daha önce boru (pipe) ile denenmediyse:
+                if (
+                    self.current_song
+                    and not manual_skip
+                    and not self.current_song.is_file
+                    and (song_dur or 0) > 40
+                    and elapsed < 25
+                    and getattr(self.current_song, 'retry_count', 0) == 0
+                ):
+                    print(
+                        f"[Player Retry] '{self.current_song.title}' erken koptu "
+                        f"({elapsed:.1f}s / {song_dur}s). Boru hattı (pipe) modu ile yeniden deneniyor..."
+                    )
+                    self.current_song.retry_count = 1
+                    self.current_song.force_pipe = True
+                    self.current_song.stream_url = ""  # Doğrudan akışı sıfırla, pipe açacak
+                    self.queue.insert(0, self.current_song)
+                    self.current_song = None
+                else:
+                    # Döngü veya geçmiş mantığı
+                    if self.current_song and not self.skip_loop_once:
+                        if self.loop_mode == "song":
+                            self.queue.insert(0, self.current_song)
+                        elif self.loop_mode == "queue":
+                            self.queue.append(self.current_song)
+                        else:
+                            self.history.append(self.current_song)
+                            if len(self.history) > 50:
+                                self.history.pop(0)
+                    elif self.current_song and self.skip_loop_once:
+                        # Şarkı atlandığında da geçmişe ekle
                         self.history.append(self.current_song)
                         if len(self.history) > 50:
                             self.history.pop(0)
-                elif self.current_song and self.skip_loop_once:
-                    # Şarkı atlandığında da geçmişe ekle
-                    self.history.append(self.current_song)
-                    if len(self.history) > 50:
-                        self.history.pop(0)
 
             self.skip_loop_once = False
             self.current_song = None
@@ -349,6 +377,7 @@ class GuildMusicPlayer:
 
     def skip(self):
         """Mevcut şarkıyı atlar."""
+        self.is_manual_skip = True
         if self.loop_mode == "song":
             self.skip_loop_once = True
             
@@ -383,6 +412,7 @@ class GuildMusicPlayer:
 
     async def stop(self):
         """Müziği tamamen durdurur, kuyruğu ve geçmişi temizler, ses durumunu sıfırlar ve kanaldan ayrılır."""
+        self.is_manual_skip = True
         self.queue.clear()
         self.history.clear()
         self.current_song = None
