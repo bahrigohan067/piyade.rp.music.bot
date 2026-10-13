@@ -6,8 +6,14 @@ load_dotenv()
 # Discord Bot Token (Railway'deki MUSIC_TOKEN değişkenini okur)
 DISCORD_TOKEN = os.getenv("MUSIC_TOKEN") or os.getenv("DISCORD_TOKEN", "")
 
-# Müzik Açma İzni Rol ID'si (Varsayılan: 1547589732937240627)
-MUSIC_ROLE_ID = int(os.getenv("MUSIC_ROLE_ID", "1547589732937240627"))
+# Müzik Açma İzni Rol ID'leri (Tek ID veya virgülle ayrılarak birden fazla sunucu rolü: "ID1,ID2")
+_raw_roles = os.getenv("MUSIC_ROLE_ID") or os.getenv("MUSIC_ROLE_IDS") or "1547589732937240627"
+MUSIC_ROLE_IDS = [
+    int(r.strip()) for r in _raw_roles.replace(";", ",").split(",") if r.strip().isdigit()
+]
+if not MUSIC_ROLE_IDS:
+    MUSIC_ROLE_IDS = [1547589732937240627]
+MUSIC_ROLE_ID = MUSIC_ROLE_IDS[0]
 
 # Çalma Listesi Maksimum Şarkı Limiti (Varsayılan: 100 parça)
 MAX_PLAYLIST_SONGS = int(os.getenv("MAX_PLAYLIST_SONGS", "100"))

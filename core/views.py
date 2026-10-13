@@ -2,7 +2,7 @@ import discord
 from discord import ui
 import random
 import config
-from utils.checks import user_has_music_role
+from utils.checks import user_has_music_role, get_required_role_mention
 
 class MusicControlView(ui.View):
     """
@@ -16,8 +16,9 @@ class MusicControlView(ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         # 1. Rol Yetkisi Kontrolü
         if not user_has_music_role(interaction.user):
+            role_text = get_required_role_mention(interaction.guild)
             await interaction.response.send_message(
-                f"⛔ **Yetkiniz Yok!**\nBu kontrol panelini yalnızca <@&{config.MUSIC_ROLE_ID}> rolüne sahip üyeler kullanabilir.",
+                f"⛔ **Yetkiniz Yok!**\nBu kontrol panelini yalnızca {role_text} rolüne veya Yönetici yetkisine sahip üyeler kullanabilir.",
                 ephemeral=True
             )
             return False

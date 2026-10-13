@@ -49,7 +49,7 @@ class PiyadeMusicBot(commands.Bot):
     async def on_ready(self):
         logger.info(f"==================================================")
         logger.info(f"🤖 Bot Aktif: {self.user.name} (ID: {self.user.id})")
-        logger.info(f"👑 Müzik Yetki Rolü ID: {config.MUSIC_ROLE_ID}")
+        logger.info(f"👑 Müzik Yetki Rolü ID(leri): {config.MUSIC_ROLE_IDS}")
         logger.info(f"🌐 Bağlı Sunucu Sayısı: {len(self.guilds)}")
         if config.YTDL_OPTIONS.get('cookiefile'):
             logger.info("🍪 YouTube Çerez Durumu: Aktif (Çerez token'ı başarıyla yüklendi)")

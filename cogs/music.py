@@ -5,7 +5,7 @@ from typing import Dict, Optional
 import config
 from core.player import GuildMusicPlayer
 from core.ytdl import YTDLSource, is_playlist_url
-from utils.checks import user_has_music_role, check_voice_state
+from utils.checks import user_has_music_role, check_voice_state, get_required_role_mention
 
 # İzin verilen ses dosyası uzantıları
 ALLOWED_AUDIO_EXTENSIONS = ('.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus', '.webm')
@@ -47,7 +47,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         if not user_has_music_role(interaction.user):
             embed = discord.Embed(
                 title="⛔ Yetkiniz Bulunmuyor!",
-                description=f"Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                description=f"Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 color=config.COLOR_ERROR
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -185,7 +185,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         if not user_has_music_role(interaction.user):
             embed = discord.Embed(
                 title="⛔ Yetkisiz İşlem",
-                description=f"Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                description=f"Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 color=config.COLOR_ERROR
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -271,7 +271,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         if not user_has_music_role(interaction.user):
             embed = discord.Embed(
                 title="⛔ Yetkiniz Bulunmuyor!",
-                description=f"Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                description=f"Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 color=config.COLOR_ERROR
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -329,7 +329,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def kuyruk(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -344,7 +344,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def gecmis(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -359,7 +359,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def onceki(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -381,7 +381,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def atla(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -404,7 +404,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def durdur(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -423,7 +423,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def panel(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -447,7 +447,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def karistir(self, interaction: discord.Interaction):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -476,7 +476,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def dongu(self, interaction: discord.Interaction, mod: app_commands.Choice[str]):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
@@ -497,7 +497,7 @@ class MusicCog(commands.Cog, name="Müzik"):
     async def ses(self, interaction: discord.Interaction, seviye: app_commands.Range[int, 0, 100]):
         if not user_has_music_role(interaction.user):
             return await interaction.response.send_message(
-                f"⛔ Bu komutu kullanabilmek için <@&{config.MUSIC_ROLE_ID}> rolüne sahip olmalısınız.",
+                f"⛔ Bu komutu kullanabilmek için {get_required_role_mention(interaction.guild)} rolüne sahip olmalısınız.",
                 ephemeral=True
             )
 
