@@ -36,15 +36,21 @@ class PiyadeMusicBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ 'cogs.music' yüklenirken hata oluştu: {e}")
 
-        # Komutları senkronize et
-        if config.GUILD_ID:
-            guild = discord.Object(id=config.GUILD_ID)
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            logger.info(f"⚡ Komutlar sunucuya (Guild ID: {config.GUILD_ID}) anında senkronize edildi ({len(synced)} komut).")
-        else:
+        # Komutları global olarak senkronize et (Tüm sunucularda geçerli)
+        try:
             synced = await self.tree.sync()
             logger.info(f"🌍 Komutlar global olarak senkronize edildi ({len(synced)} komut).")
+        except Exception as e:
+            logger.error(f"❌ Global komut senkronizasyon hatası: {e}")
+
+    async def on_guild_join(self, guild: discord.Guild):
+        """Bot yeni bir sunucuya katıldığında komutları o sunucuya anında senkronize eder."""
+        try:
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info(f"🎉 Yeni sunucuya ({guild.name}) komutlar anında senkronize edildi.")
+        except Exception as e:
+            logger.warning(f"⚠️ [{guild.name}] sunucusuna senkronizasyon uyarısı: {e}")
 
     async def on_ready(self):
         logger.info(f"==================================================")
@@ -56,6 +62,15 @@ class PiyadeMusicBot(commands.Bot):
         else:
             logger.warning("⚠️ YouTube Çerez Durumu: Çerez token'ı tanımlı değil (YTDLP_TOKEN veya YTDLP_COOKIES)")
         logger.info(f"==================================================")
+
+        # Tüm bağlı sunuculara komutları anında senkronize et (Her sunucuda anında / komutları çıksın)
+        for guild in self.guilds:
+            try:
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                logger.info(f"⚡ [{guild.name}] (ID: {guild.id}) sunucusuna komutlar anında senkronize edildi.")
+            except Exception as e:
+                logger.warning(f"⚠️ [{guild.name}] senkronizasyon uyarısı: {e}")
 
         for guild in self.guilds:
             logger.info(f"Sunucu [{guild.name}] (ID: {guild.id}) - {len(guild.emojis)} adet emoji:")
