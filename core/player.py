@@ -9,7 +9,11 @@ from utils.helpers import format_duration, create_emoji_progress_bar
 
 class GuildMusicPlayer:
     """Her sunucu için ayrı müzik kuyruğunu, ses durumu ve oynatma durumunu yönetir."""
+    MAX_CONSECUTIVE_FAILURES = 5
+
     def __init__(self, bot, guild: discord.Guild):
+        self.consecutive_failures: int = 0
+        self.failure_notified: bool = False
         self.bot = bot
         self.guild = guild
         self.queue: List[Song] = []
@@ -297,39 +301,72 @@ class GuildMusicPlayer:
                     source = await YTDLSource.create_source(candidate_song, volume=self.volume)
                     self.current_song = candidate_song
                     self.current_source = source
+                    self.consecutive_failures = 0
+                    self.failure_notified = False
                     break
                 except Exception as e:
                     err_text = str(e)
                     print(f"[Player Error] Şarkı kaynağı oluşturulamadı ({candidate_song.title}): {err_text}")
-                    if "BOT_CHECK" in err_text or "Sign in to confirm you" in err_text:
+                    self.consecutive_failures += 1
+                    is_bot_block = "BOT_CHECK" in err_text or "Sign in to confirm you" in err_text
+
+                    # Art arda çok sayıda başarısızlık: tüm kaynaklar engelli demektir, kuyruğu temizleyip dur
+                    if self.consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
                         if self.text_channel:
-                            err_embed = discord.Embed(
-                                title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
-                                description=(
-                                    "YouTube, bu şarkıyı oynatırken Railway veri merkezi IP adresini engelledi.\n\n"
-                                    "💡 **Çözüm:**\n"
-                                    "Railway Variables sekmesine `YTDLP_COOKIES` değişkeni olarak YouTube çerezlerini ekleyiniz.\n\n"
-                                    "📁 Veya `/dosya-oynat` komutuyla şarkı dosyasını doğrudan Discord üzerinden kesintisiz çalabilirsiniz."
-                                ),
-                                color=config.COLOR_ERROR
-                            )
-                            await self.text_channel.send(embed=err_embed)
+                            try:
+                                if is_bot_block:
+                                    err_embed = discord.Embed(
+                                        title="⚠️ YouTube Bot Koruması (Railway IP Engeli)",
+                                        description=(
+                                            f"Art arda **{self.consecutive_failures}** parça YouTube tarafından engellendi; "
+                                            "çalma durduruldu.\n\n"
+                                            "💡 **Çözüm:** Railway Variables sekmesindeki `YTDLP_COOKIES` değerini "
+                                            "taze (yeni alınmış) YouTube çerezleriyle güncelleyin.\n\n"
+                                            "📁 Veya `/dosya-oynat` komutunu kullanın."
+                                        ),
+                                        color=config.COLOR_ERROR
+                                    )
+                                else:
+                                    err_embed = discord.Embed(
+                                        title="⚠️ Parçalar Oynatılamadı",
+                                        description=f"Art arda **{self.consecutive_failures}** parça yüklenemedi; çalma durduruldu.",
+                                        color=config.COLOR_ERROR
+                                    )
+                                await self.text_channel.send(embed=err_embed)
+                            except Exception:
+                                pass
+                        self.consecutive_failures = 0
+                        self.failure_notified = False
                         self.queue.clear()
                         self.current_song = None
+                        self.is_paused = False
+                        self.stop_status_loop()
+                        await self.clear_voice_channel_status()
                         self.start_disconnect_timer()
                         return
 
-                    failed_title = candidate_song.title if candidate_song else "Bilinmeyen Şarkı"
-                    if self.text_channel:
-                        err_embed = discord.Embed(
-                            title="⚠️ Parça Atlandı (Kullanılamıyor)",
-                            description=f"**{failed_title}** parçası silinmiş, gizli veya kullanılamıyor.\nSıradaki parçaya geçiliyor...",
-                            color=config.COLOR_ERROR
-                        )
+                    # Tek bir parça engellendiyse kuyruğun tamamını silme; sadece bu parçayı atla.
+                    # Mesaj kirliliğini önlemek için seri başına yalnızca bir uyarı gönderilir.
+                    if self.text_channel and not self.failure_notified:
+                        self.failure_notified = True
+                        failed_title = candidate_song.title if candidate_song else "Bilinmeyen Şarkı"
+                        if is_bot_block:
+                            desc = (
+                                f"**{failed_title}** YouTube bot koruması nedeniyle alınamadı.\n"
+                                "Sıradaki parçaya geçiliyor..."
+                            )
+                        else:
+                            desc = f"**{failed_title}** parçası silinmiş, gizli veya kullanılamıyor.\nSıradaki parçaya geçiliyor..."
                         try:
-                            await self.text_channel.send(embed=err_embed)
+                            await self.text_channel.send(embed=discord.Embed(
+                                title="⚠️ Parça Atlandı", description=desc, color=config.COLOR_ERROR
+                            ))
                         except Exception:
                             pass
+
+                    # Bot engelinde ardışık istekleri seyrekleştir (IP'yi daha fazla yakmamak için)
+                    if is_bot_block:
+                        await asyncio.sleep(2)
                     # Kilitlenme (deadlock) olmaması için recursion yerine döngüyle bir sonrakine geç
                     continue
 
