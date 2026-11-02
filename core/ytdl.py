@@ -255,14 +255,26 @@ def _extraction_variants() -> List[Tuple[str, Dict[str, Any]]]:
     """
     Sırasıyla denenecek yt-dlp yapılandırmaları:
     1) Varsayılan istemciler (+ çerez varsa çerezli) — Deno ile en güvenilir yol
-    2) Çerezsiz android_vr/tv/web_safari — PO token gerektirmeyen yedek istemciler
-    3) Çerezli tv/web_safari/mweb/web — son çare
+    2) iOS istemcisi (Çerezsiz) — Datacenter IP'lerinde PO Token zorunluluğuna takılmayan en güçlü mobil istemci
+    3) Mobil Web ve gömülü istemciler (mweb, tv_embedded, web_embedded)
+    4) Çerezsiz android_vr/tv/web_safari — PO token gerektirmeyen yedek istemciler
+    5) Çerezli tv/web_safari/mweb/web — son çare
     """
     base = dict(config.YTDL_OPTIONS)
     base.pop('extractor_args', None)
     no_cookie = {k: v for k, v in base.items() if k != 'cookiefile'}
 
     variants: List[Tuple[str, Dict[str, Any]]] = [("varsayılan", base)]
+    # iOS istemcisi (Veri merkezi IP bot korumasını aşmada en yüksek başarı oranına sahip)
+    variants.append((
+        "ios",
+        {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['ios']}}}
+    ))
+    # Mobil web ve gömülü TV istemcileri
+    variants.append((
+        "mweb/embedded",
+        {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['mweb', 'tv_embedded', 'web_embedded']}}}
+    ))
     variants.append((
         "android_vr",
         {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['android_vr', 'tv', 'web_safari']}}}
@@ -422,7 +434,9 @@ class YTDLPipeAudio(discord.FFmpegPCMAudio):
 
 
 def _is_preview_entry(entry: Dict[str, Any]) -> bool:
-    """SoundCloud Go+ 30 saniyelik önizleme kaydı olup olmadığını kontrol eder."""
+    """SoundCloud Go+ 30 saniyelik önizleme veya DRM korumalı kayıt olup olmadığını kontrol eder."""
+    if not entry:
+        return True
     dur = entry.get('duration') or 0
     if 0 < dur <= 35:
         return True
@@ -430,7 +444,11 @@ def _is_preview_entry(entry: Dict[str, Any]) -> bool:
     if '/preview/' in fmt_url:
         return True
     note = f"{entry.get('format_id') or ''} {entry.get('format_note') or ''}".lower()
-    return 'preview' in note
+    if 'preview' in note or 'drm' in note:
+        return True
+    if entry.get('is_drm') or entry.get('availability') in ('needs_auth', 'subscriber_only'):
+        return True
+    return False
 
 
 class YTDLSource:

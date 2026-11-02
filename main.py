@@ -6,11 +6,12 @@ import discord
 from discord.ext import commands
 import config
 
-# Log formatı
+# Log formatı (Railway'in tüm logları 'error' olarak algılamaması için stdout kullanılır)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stdout
 )
 logger = logging.getLogger("PiyadeMusicBot")
 
