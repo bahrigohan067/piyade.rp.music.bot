@@ -373,7 +373,7 @@ def _ffmpeg_before_options(headers: Optional[Dict[str, str]]) -> str:
     crlf = "\r\n"
     extra = ""
     for key, value in headers.items():
-        if not value or key.lower() in ('user-agent', 'cookie'):
+        if not value or key.lower() == 'user-agent':
             continue
         extra += f"{key}: {value}" + crlf
     if extra:
@@ -394,6 +394,7 @@ class YTDLPipeAudio(discord.FFmpegPCMAudio):
         cmd = [
             sys.executable, '-m', 'yt_dlp',
             '--no-playlist', '--quiet', '--no-warnings', '--no-part',
+            '--no-check-certificates',
             '-f', 'bestaudio/best',
             '-o', '-',
         ]

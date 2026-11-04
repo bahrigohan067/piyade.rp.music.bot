@@ -15,6 +15,15 @@ class VoiceChannelError(app_commands.AppCommandError):
 
 DJ_ROLE_NAMES = {"dj", "müzik", "muzik", "music", "müzisyen"}
 
+def guild_has_configured_music_role(guild: Optional[discord.Guild]) -> bool:
+    """Sunucuda tanımlı veya adı 'DJ'/'Müzik' olan bir rolün bulunup bulunmadığını kontrol eder."""
+    if not guild:
+        return False
+    return any(
+        role.id in config.MUSIC_ROLE_IDS or role.name.lower() in DJ_ROLE_NAMES
+        for role in guild.roles
+    )
+
 def user_has_music_role(user: discord.Member) -> bool:
     """Kullanıcının belirtilen müzik rolüne veya yönetici yetkisine sahip olup olmadığını kontrol eder."""
     if not isinstance(user, discord.Member):
@@ -24,6 +33,12 @@ def user_has_music_role(user: discord.Member) -> bool:
     if user.guild_permissions.administrator:
         return True
     
+    # Eğer sunucuda HENÜZ hiçbir müzik veya DJ rolü kurulmamışsa:
+    # Sunucu sahibi rol ayarlayana kadar üyeleri kilitlememek için ses kanalındakilere izin ver
+    guild = user.guild
+    if not guild_has_configured_music_role(guild):
+        return True
+
     # 1. Tanımlı Rol ID kontrolü (birden fazla sunucu desteği)
     if any(role.id in config.MUSIC_ROLE_IDS for role in user.roles):
         return True
@@ -37,7 +52,7 @@ def get_required_role_mention(guild: Optional[discord.Guild]) -> str:
         for role in guild.roles:
             if role.id in config.MUSIC_ROLE_IDS or role.name.lower() in DJ_ROLE_NAMES:
                 return role.mention
-    return f"<@&{config.MUSIC_ROLE_ID}>"
+    return "`DJ` veya `Müzik`"
 
 def check_voice_state(interaction: discord.Interaction) -> tuple[bool, str | None]:
     """

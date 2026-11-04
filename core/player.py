@@ -245,14 +245,14 @@ class GuildMusicPlayer:
                 song_dur = self.current_song.duration if self.current_song else 0
 
                 # Erken kopma tespiti (YouTube CDN 403 veya soket düşmesi):
-                # Şarkı kullanıcı tarafından manuel geçilmediyse, dosya değilse, süresi 40s'den uzunsa
-                # ancak 25 saniyeden önce sonlandıysa ve daha önce boru (pipe) ile denenmediyse:
+                # Şarkı kullanıcı tarafından manuel geçilmediyse, dosya değilse, süresi 30s'den uzunsa
+                # ancak şarkı normal bitiş süresinden önce sonlandıysa ve daha önce boru (pipe) ile denenmediyse:
                 if (
                     self.current_song
                     and not manual_skip
                     and not self.current_song.is_file
-                    and (song_dur or 0) > 40
-                    and elapsed < 25
+                    and (song_dur or 0) > 30
+                    and (elapsed < 25 or (song_dur and elapsed < (song_dur - 15)))
                     and getattr(self.current_song, 'retry_count', 0) == 0
                 ):
                     print(
