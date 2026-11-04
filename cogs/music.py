@@ -67,15 +67,10 @@ class MusicCog(commands.Cog, name="Müzik"):
         # İşlem uzun sürebileceği için defer
         await interaction.response.defer(ephemeral=False)
 
-        # 3. Ses kanalına bağlan
-        voice_client = await self.ensure_voice_connection(interaction)
-        if not voice_client:
-            return await interaction.followup.send(
-                f"❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
-                ephemeral=True
-            )
+        player = self.get_player(interaction.guild)
 
-        # 4. YouTube'dan şarkıyı veya çalma listesini ara / getir
+        # 3. Önce YouTube'dan şarkıyı veya çalma listesini ara / getir
+        # (Ses kanalına bağlanmadan önce akış çözülür; böylece ses kanalında boş bekleyip DAVE/UDP zaman aşımına düşülmez)
         if is_playlist_url(sarki):
             songs, error_detail, playlist_title = await YTDLSource.from_playlist(sarki, interaction.user)
             if not songs:
@@ -96,7 +91,19 @@ class MusicCog(commands.Cog, name="Müzik"):
                     )
                 return await interaction.followup.send(embed=err_embed)
 
-            player = self.get_player(interaction.guild)
+            # Bot şu an çalmıyorsa ilk parçanın akışını ses kanalına girmeden önce hazırla
+            if not player.current_song and songs and not songs[0].stream_url:
+                first_resolved, _ = await YTDLSource.from_query(songs[0].webpage_url, interaction.user)
+                if first_resolved and first_resolved.stream_url:
+                    songs[0] = first_resolved
+
+            voice_client = await self.ensure_voice_connection(interaction)
+            if not voice_client:
+                return await interaction.followup.send(
+                    "❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
+                    ephemeral=True
+                )
+
             started_now, queue_pos = await player.add_playlist_to_queue(songs, interaction.channel)
 
             p_title = playlist_title or "YouTube Çalma Listesi"
@@ -134,7 +141,7 @@ class MusicCog(commands.Cog, name="Müzik"):
                 await interaction.followup.send(embed=embed)
             return
 
-        # Tekil şarkı arama
+        # Tekil şarkı arama (önce çöz, sonra ses kanalına bağlan)
         song, error_detail = await YTDLSource.from_query(sarki, interaction.user)
         if not song:
             if error_detail == "BOT_CHECK":
@@ -156,7 +163,14 @@ class MusicCog(commands.Cog, name="Müzik"):
                 )
             return await interaction.followup.send(embed=err_embed)
 
-        player = self.get_player(interaction.guild)
+        # 4. Şarkı hazırlandıktan hemen sonra ses kanalına bağlan ve çal
+        voice_client = await self.ensure_voice_connection(interaction)
+        if not voice_client:
+            return await interaction.followup.send(
+                "❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
+                ephemeral=True
+            )
+
         queue_pos = await player.add_to_queue(song, interaction.channel)
 
         if queue_pos is None:
@@ -204,14 +218,7 @@ class MusicCog(commands.Cog, name="Müzik"):
 
         await interaction.response.defer(ephemeral=False)
 
-        # 3. Ses kanalına bağlan
-        voice_client = await self.ensure_voice_connection(interaction)
-        if not voice_client:
-            return await interaction.followup.send(
-                "❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
-                ephemeral=True
-            )
-
+        player = self.get_player(interaction.guild)
         songs, error_detail, playlist_title = await YTDLSource.from_playlist(liste_url, interaction.user)
         if not songs:
             if error_detail == "BOT_CHECK":
@@ -231,7 +238,18 @@ class MusicCog(commands.Cog, name="Müzik"):
                 )
             return await interaction.followup.send(embed=err_embed)
 
-        player = self.get_player(interaction.guild)
+        if not player.current_song and songs and not songs[0].stream_url:
+            first_resolved, _ = await YTDLSource.from_query(songs[0].webpage_url, interaction.user)
+            if first_resolved and first_resolved.stream_url:
+                songs[0] = first_resolved
+
+        voice_client = await self.ensure_voice_connection(interaction)
+        if not voice_client:
+            return await interaction.followup.send(
+                "❌ Bot şu anda başka bir ses kanalında kilitli durumdadır!",
+                ephemeral=True
+            )
+
         started_now, queue_pos = await player.add_playlist_to_queue(songs, interaction.channel)
 
         p_title = playlist_title or "YouTube Çalma Listesi"
@@ -540,26 +558,31 @@ class MusicCog(commands.Cog, name="Müzik"):
         if bot_voice and bot_voice.is_connected() and bot_voice.channel and bot_voice.channel.id != ctx.author.voice.channel.id:
             return await ctx.reply(f"🔒 Bot şu anda <#{bot_voice.channel.id}> kanalında hizmet veriyor!")
 
-        # 3. Ses kanalına bağlan
-        if bot_voice is not None and not bot_voice.is_connected():
-            try:
-                await bot_voice.disconnect(force=True)
-            except Exception:
-                pass
-            bot_voice = None
-
-        if bot_voice is None:
-            voice_client = await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
-        else:
-            voice_client = bot_voice
-
-        # 4. Şarkıyı yükle ve kuyruğa ekle
+        # 3. Önce şarkıyı/listeyi çöz, ardından ses kanalına bağlan
         msg = await ctx.reply("🔍 Şarkı aranıyor, lütfen bekleyin...")
+        player = self.get_player(ctx.guild)
+
+        async def _connect_author_voice():
+            bv = ctx.guild.voice_client
+            if bv is not None and not bv.is_connected():
+                try:
+                    await bv.disconnect(force=True)
+                except Exception:
+                    pass
+                bv = None
+            if bv is None:
+                return await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
+            return bv
+
         if is_playlist_url(sarki):
             songs, error_detail, playlist_title = await YTDLSource.from_playlist(sarki, ctx.author)
             if not songs:
                 return await msg.edit(content=f"❌ Çalma listesi yüklenemedi: `{error_detail or 'Bilinmeyen hata'}`")
-            player = self.get_player(ctx.guild)
+            if not player.current_song and songs and not songs[0].stream_url:
+                first_resolved, _ = await YTDLSource.from_query(songs[0].webpage_url, ctx.author)
+                if first_resolved and first_resolved.stream_url:
+                    songs[0] = first_resolved
+            await _connect_author_voice()
             started_now, queue_pos = await player.add_playlist_to_queue(songs, ctx.channel)
             p_title = playlist_title or "YouTube Çalma Listesi"
             if started_now:
@@ -570,7 +593,7 @@ class MusicCog(commands.Cog, name="Müzik"):
             song, error_detail = await YTDLSource.from_query(sarki, ctx.author)
             if not song:
                 return await msg.edit(content=f"❌ Şarkı bulunamadı veya yüklenemedi: `{error_detail or 'Bilinmeyen hata'}`")
-            player = self.get_player(ctx.guild)
+            await _connect_author_voice()
             queue_pos = await player.add_to_queue(song, ctx.channel)
             if queue_pos is None:
                 await msg.edit(content=f"▶️ **{song.title}** çalınıyor...")

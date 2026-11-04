@@ -20,11 +20,11 @@ COPY --from=deno-bin /deno /usr/local/bin/deno
 
 WORKDIR /app
 
-# Paketleri yükle (discord.py DAVE E2EE ses şifrelemesi ve yt-dlp en güncel sürüme yükseltilir)
+# Paketleri yükle (discord.py DAVE E2EE ses şifrelemesi, Opus ve yt-dlp en güncel sürüme yükseltilir)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --upgrade -r requirements.txt \
-    && python -c "import discord, davey, nacl; print('discord.py:', discord.__version__, 'DAVE:', davey.DAVE_PROTOCOL_VERSION)" \
+    && python -c "import discord, davey, nacl; discord.opus.load_opus('libopus.so.0'); print('discord.py:', discord.__version__, 'DAVE:', davey.DAVE_PROTOCOL_VERSION, 'Opus:', discord.opus.is_loaded())" \
     && deno --version \
     && python -m yt_dlp --version
 

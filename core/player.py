@@ -268,8 +268,16 @@ class GuildMusicPlayer:
     async def process_next(self):
         """Kuyruktaki sıradaki parçayı oynatır."""
         async with self.lock:
+            if self.current_source is not None:
+                try:
+                    self.current_source.cleanup()
+                except Exception:
+                    pass
+                self.current_source = None
+
             manual_skip = self.is_manual_skip or self.skip_loop_once
             self.is_manual_skip = False
+            is_voice_active = bool(self.voice_client and self.voice_client.is_connected())
 
             # Geriye gidiliyorsa döngü veya geçmişe ekleme mantığını atla
             if self.is_going_previous:
@@ -279,10 +287,10 @@ class GuildMusicPlayer:
                 song_dur = self.current_song.duration if self.current_song else 0
 
                 # Erken kopma tespiti (YouTube CDN 403 veya soket düşmesi):
-                # Şarkı kullanıcı tarafından manuel geçilmediyse, dosya değilse, süresi 30s'den uzunsa
-                # ancak şarkı normal bitiş süresinden önce sonlandıysa ve daha önce boru (pipe) ile denenmediyse:
+                # Yalnızca ses bağlantısı hâlâ aktifken (kanaldan ayrılma değilken) devreye girer
                 if (
-                    self.current_song
+                    is_voice_active
+                    and self.current_song
                     and not manual_skip
                     and not self.current_song.is_file
                     and (song_dur or 0) > 30
@@ -318,8 +326,19 @@ class GuildMusicPlayer:
             self.skip_loop_once = False
             self.current_song = None
 
+            if not self.voice_client or not self.voice_client.is_connected():
+                self.is_paused = False
+                self.stop_status_loop()
+                return
+
             # Şarkı yükleme döngüsü (Silinmiş veya DRM hatalı şarkılar kilitlenme/deadlock olmadan atlanır)
             while True:
+                if not self.voice_client or not self.voice_client.is_connected():
+                    self.current_song = None
+                    self.is_paused = False
+                    self.stop_status_loop()
+                    return
+
                 if not self.queue:
                     self.current_song = None
                     self.is_paused = False
@@ -411,6 +430,22 @@ class GuildMusicPlayer:
                 asyncio.run_coroutine_threadsafe(self.process_next(), self.bot.loop)
 
             if self.voice_client and self.voice_client.is_connected():
+                # DAVE E2EE MLS el sıkışmasının tamamlanmasını bekle (ilk ses paketlerinin düşmemesi için)
+                conn = getattr(self.voice_client, '_connection', None)
+                if conn is not None:
+                    for _ in range(40):
+                        if getattr(conn, 'dave_protocol_version', 0) == 0 or getattr(conn, 'can_encrypt', False):
+                            break
+                        await asyncio.sleep(0.05)
+                    dave_ver = getattr(conn, 'dave_protocol_version', 0)
+                    dave_ready = getattr(getattr(conn, 'dave_session', None), 'ready', False)
+                    can_enc = getattr(conn, 'can_encrypt', False)
+                    print(
+                        f"[Voice Play] Başlatılıyor: '{self.current_song.title}' | "
+                        f"Opus: {discord.opus.is_loaded()} | Mode: {getattr(conn, 'mode', '?')} | "
+                        f"DAVE: v{dave_ver} (Ready: {dave_ready}, CanEncrypt: {can_enc})"
+                    )
+
                 await self.ensure_unmuted_and_unsuppressed()
                 self.voice_client.play(source, after=after_playing)
                 self.is_paused = False
@@ -423,6 +458,11 @@ class GuildMusicPlayer:
                 await self.send_or_update_panel()
                 self.start_status_loop()
             else:
+                try:
+                    source.cleanup()
+                except Exception:
+                    pass
+                self.current_source = None
                 self.current_song = None
                 self.stop_status_loop()
                 await self.clear_voice_channel_status()

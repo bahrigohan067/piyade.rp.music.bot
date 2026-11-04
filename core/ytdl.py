@@ -254,36 +254,30 @@ def _run_ytdl(opts: Dict[str, Any], target: str) -> Tuple[Optional[Dict[str, Any
 def _extraction_variants() -> List[Tuple[str, Dict[str, Any]]]:
     """
     Sırasıyla denenecek yt-dlp yapılandırmaları:
-    1) Varsayılan istemciler (+ çerez varsa çerezli) — Deno ile en güvenilir yol
-    2) iOS istemcisi (Çerezsiz) — Datacenter IP'lerinde PO Token zorunluluğuna takılmayan en güçlü mobil istemci
+    1) Çerez varsa tv/mweb/web_safari — Çerez destekler ve masaüstü 'web' SABR sessizlik sorununa takılmaz
+    2) iOS ve android_vr istemcisi (Çerezsiz) — PO Token ve SABR kısıtlamasına takılmayan doğrudan akış istemcileri
     3) Mobil Web ve gömülü istemciler (mweb, tv_embedded, web_embedded)
-    4) Çerezsiz android_vr/tv/web_safari — PO token gerektirmeyen yedek istemciler
-    5) Çerezli tv/web_safari/mweb/web — son çare
+    4) Varsayılan istemciler (+ çerez varsa çerezli)
     """
     base = dict(config.YTDL_OPTIONS)
     base.pop('extractor_args', None)
     no_cookie = {k: v for k, v in base.items() if k != 'cookiefile'}
 
-    variants: List[Tuple[str, Dict[str, Any]]] = [("varsayılan", base)]
-    # iOS istemcisi (Veri merkezi IP bot korumasını aşmada en yüksek başarı oranına sahip)
+    variants: List[Tuple[str, Dict[str, Any]]] = []
+    if base.get('cookiefile'):
+        variants.append((
+            "tv/mweb",
+            {**base, 'extractor_args': {'youtube': {'player_client': ['tv', 'mweb', 'web_safari']}}}
+        ))
     variants.append((
-        "ios",
-        {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['ios']}}}
+        "ios/android_vr",
+        {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['ios', 'android_vr']}}}
     ))
-    # Mobil web ve gömülü TV istemcileri
     variants.append((
         "mweb/embedded",
         {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['mweb', 'tv_embedded', 'web_embedded']}}}
     ))
-    variants.append((
-        "android_vr",
-        {**no_cookie, 'extractor_args': {'youtube': {'player_client': ['android_vr', 'tv', 'web_safari']}}}
-    ))
-    if base.get('cookiefile'):
-        variants.append((
-            "tv/web",
-            {**base, 'extractor_args': {'youtube': {'player_client': ['tv', 'web_safari', 'mweb', 'web']}}}
-        ))
+    variants.append(("varsayılan", base))
     return variants
 
 
@@ -318,8 +312,11 @@ def _extract_stream_sync(url: str) -> Tuple[Optional[Dict[str, Any]], Optional[s
         if data:
             stream_url, _ = _pick_stream(data)
             if stream_url:
-                if name != "varsayılan":
-                    print(f"[YTDL] Akış '{name}' stratejisiyle alındı: {data.get('title')}")
+                print(
+                    f"[YTDL] Akış alındı ({name}): {data.get('title')} | "
+                    f"format={data.get('format_id')} ext={data.get('ext')} "
+                    f"protocol={data.get('protocol')} acodec={data.get('acodec')}"
+                )
                 return data, None, False
             err = err or "Oynatılabilir ses formatı bulunamadı"
 
@@ -368,24 +365,69 @@ def _ffmpeg_before_options(headers: Optional[Dict[str, str]]) -> str:
     parts = [opts]
     user_agent = headers.get('User-Agent') or headers.get('user-agent')
     if user_agent:
-        parts.append("-user_agent " + shlex.quote(user_agent))
+        clean_ua = str(user_agent).replace("\r", "").replace("\n", "").strip()
+        if clean_ua:
+            parts.append("-user_agent " + shlex.quote(clean_ua))
 
     crlf = "\r\n"
     extra = ""
     for key, value in headers.items():
-        if not value or key.lower() in ('user-agent', 'cookie'):
+        if not value or key.lower() == 'user-agent':
             continue
-        extra += f"{key}: {value}" + crlf
+        clean_val = str(value).replace("\r", "").replace("\n", "").strip()
+        if clean_val:
+            extra += f"{key}: {clean_val}" + crlf
     if extra:
         parts.append("-headers " + shlex.quote(extra))
     return " ".join(parts)
 
 
-class YTDLPipeAudio(discord.FFmpegPCMAudio):
+class VerifiedFFmpegPCMAudio(discord.FFmpegPCMAudio):
+    """
+    FFmpegPCMAudio kaynağının gerçekten çözünmüş PCM ses verisi ürettiğini doğrulayan sınıf.
+    YouTube SABR / 403 / soket kilitlenmelerinde FFmpeg'in 0 byte üretip sessiz kalmasını önler.
+    """
+    def __init__(self, source, *, pipe: bool = False, before_options: Optional[str] = None, options: Optional[str] = None):
+        self._prebuffer: List[bytes] = []
+        super().__init__(
+            source,
+            pipe=pipe,
+            before_options=before_options,
+            options=options,
+        )
+
+    def verify_stream(self, frames_to_buffer: int = 5) -> None:
+        """İlk birkaç 20ms'lik PCM ses karesini (3840 byte * frames_to_buffer) okuyup ön belleğe alır."""
+        frame_size = discord.opus.Encoder.FRAME_SIZE  # 3840 bytes (20ms 48kHz stereo PCM)
+        for _ in range(frames_to_buffer):
+            chunk = self._stdout.read(frame_size)
+            if len(chunk) != frame_size:
+                raise RuntimeError(f"FFmpeg ses verisi üretemedi (okunan: {len(chunk)} byte).")
+            self._prebuffer.append(chunk)
+
+    def abort(self) -> None:
+        """Zaman aşımı veya hata durumunda alt süreci anında sonlandırır."""
+        proc = getattr(self, '_process', None)
+        if proc is not None and proc is not discord.utils.MISSING:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def read(self) -> bytes:
+        if self._prebuffer:
+            return self._prebuffer.pop(0)
+        return super().read()
+
+
+class YTDLPipeAudio(VerifiedFFmpegPCMAudio):
     """
     Yedek oynatma modu: Sesi yt-dlp'nin kendisi indirip FFmpeg'e boru (pipe) ile aktarır.
-    Doğrudan akış adresi erken koptuğunda (403/kısıtlama) kullanılır; yt-dlp tüm başlık,
-    çerez ve parça (fragment) yönetimini kendisi üstlenir.
+    Doğrudan akış adresi erken koptuğunda veya SABR kısıtlamasına takıldığında kullanılır.
     """
     def __init__(self, url: str):
         self._ytdlp_proc: Optional[subprocess.Popen] = None
@@ -395,7 +437,8 @@ class YTDLPipeAudio(discord.FFmpegPCMAudio):
             sys.executable, '-m', 'yt_dlp',
             '--no-playlist', '--quiet', '--no-warnings', '--no-part',
             '--no-check-certificates',
-            '-f', 'bestaudio/best',
+            '--extractor-args', 'youtube:player_client=tv,mweb,ios,android_vr',
+            '-f', config.YTDL_OPTIONS['format'],
             '-o', '-',
         ]
         if self._cookie_tmp:
@@ -404,7 +447,12 @@ class YTDLPipeAudio(discord.FFmpegPCMAudio):
 
         self._ytdlp_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            super().__init__(self._ytdlp_proc.stdout, pipe=True, options=config.FFMPEG_OPTIONS)
+            super().__init__(
+                self._ytdlp_proc.stdout,
+                pipe=True,
+                before_options="-nostdin",
+                options=config.FFMPEG_OPTIONS
+            )
         except Exception:
             self._kill_ytdlp()
             raise
@@ -426,6 +474,10 @@ class YTDLPipeAudio(discord.FFmpegPCMAudio):
         self._ytdlp_proc = None
         _safe_remove(getattr(self, '_cookie_tmp', None))
         self._cookie_tmp = None
+
+    def abort(self) -> None:
+        self._kill_ytdlp()
+        super().abort()
 
     def cleanup(self) -> None:
         try:
@@ -455,52 +507,92 @@ def _is_preview_entry(entry: Dict[str, Any]) -> bool:
 class YTDLSource:
     """YouTube ve dosya ses kaynaklarını yöneten yardımcı sınıf."""
 
+    @staticmethod
+    async def _verify_audio_source(audio: VerifiedFFmpegPCMAudio, frames: int = 5, timeout: float = 7.0) -> None:
+        """FFmpeg kaynağından ilk PCM karelerinin geldiğini zaman aşımı korumasıyla doğrular."""
+        loop = asyncio.get_event_loop()
+        try:
+            await asyncio.wait_for(loop.run_in_executor(None, audio.verify_stream, frames), timeout=timeout)
+        except Exception:
+            audio.abort()
+            raise
+
     @classmethod
     async def create_source(cls, song: Song, volume: float = 0.8) -> discord.PCMVolumeTransformer:
-        """Şarkıdan FFmpeg ses kaynağı üretir."""
-        # Dosya yüklemeleri doğrudan oynatılır
+        """Şarkıdan doğrulanmış (gerçek PCM ses verisi üreten) FFmpeg ses kaynağı üretir."""
+        # 1. Dosya yüklemeleri doğrudan doğrulanarak oynatılır
         if song.is_file:
-            audio = discord.FFmpegPCMAudio(
+            audio = VerifiedFFmpegPCMAudio(
                 song.stream_url,
                 before_options=config.FFMPEG_BEFORE_OPTIONS,
                 options=config.FFMPEG_OPTIONS
             )
+            await cls._verify_audio_source(audio, frames=3, timeout=8.0)
             return discord.PCMVolumeTransformer(audio, volume=volume)
 
-        # Yedek mod: Doğrudan akış erken koptuysa sesi yt-dlp üzerinden boru ile aktar
-        if song.force_pipe and is_youtube_url(song.webpage_url):
-            print(f"[YTDL] Pipe modu ile yeniden oynatılıyor: {song.title}")
-            audio = YTDLPipeAudio(song.webpage_url)
-            return discord.PCMVolumeTransformer(audio, volume=volume)
-
-        stream_url = song.stream_url
-        headers = song.http_headers
-
-        if not stream_url:
+        # 2. Akış linki henüz çözülmediyse (ör. çalma listesi parçası) şimdi çöz
+        if not song.stream_url and not song.force_pipe:
             fresh_song, error_detail = await cls.from_query(song.webpage_url, song.requester)
             if not fresh_song or not fresh_song.stream_url:
                 raise RuntimeError(f"Şarkı akış linki alınamadı: {error_detail or 'Bilinmeyen hata'}")
 
-            stream_url = fresh_song.stream_url
-            headers = fresh_song.http_headers
-            song.http_headers = headers
+            song.stream_url = fresh_song.stream_url
+            song.http_headers = fresh_song.http_headers
             if fresh_song.duration and not song.duration:
                 song.duration = fresh_song.duration
             if fresh_song.thumbnail and not song.thumbnail:
                 song.thumbnail = fresh_song.thumbnail
-            # Meta verileri yalnızca aynı kaynaktan (YouTube) geldiyse güncelle
             if is_youtube_url(fresh_song.webpage_url):
                 if fresh_song.song_name:
                     song.song_name = fresh_song.song_name
                 if fresh_song.artist_name:
                     song.artist_name = fresh_song.artist_name
 
-        audio = discord.FFmpegPCMAudio(
-            stream_url,
-            before_options=_ffmpeg_before_options(headers),
-            options=config.FFMPEG_OPTIONS
+        # 3. Aşama A: Doğrudan HTTP akışı (force_pipe işaretli değilse)
+        if song.stream_url and not song.force_pipe:
+            try:
+                audio = VerifiedFFmpegPCMAudio(
+                    song.stream_url,
+                    before_options=_ffmpeg_before_options(song.http_headers),
+                    options=config.FFMPEG_OPTIONS
+                )
+                await cls._verify_audio_source(audio, frames=5, timeout=7.0)
+                return discord.PCMVolumeTransformer(audio, volume=volume)
+            except Exception as direct_err:
+                print(f"[YTDL] Doğrudan akış ses üretemedi ({direct_err}), alternatif mod deneniyor: {song.title}")
+
+        # 4. Aşama B: YouTube Pipe (Boru Hattı) Modu
+        if is_youtube_url(song.webpage_url):
+            try:
+                print(f"[YTDL] Pipe modu başlatılıyor: {song.title}")
+                pipe_audio = YTDLPipeAudio(song.webpage_url)
+                await cls._verify_audio_source(pipe_audio, frames=5, timeout=10.0)
+                return discord.PCMVolumeTransformer(pipe_audio, volume=volume)
+            except Exception as pipe_err:
+                print(f"[YTDL] Pipe modu ses üretemedi ({pipe_err}), SoundCloud yedeğine geçiliyor: {song.title}")
+
+        # 5. Aşama C: SoundCloud Garantili Yedek Akışı
+        sc_query = (
+            f"{song.artist_name} - {song.song_name}"
+            if song.artist_name and song.artist_name not in ("Bilinmiyor", "Dosya Yüklemesi")
+            else song.title
         )
-        return discord.PCMVolumeTransformer(audio, volume=volume)
+        sc_song, sc_err = await cls.from_soundcloud(sc_query, song.requester)
+        if sc_song and sc_song.stream_url:
+            song.stream_url = sc_song.stream_url
+            song.http_headers = sc_song.http_headers
+            if sc_song.duration and not song.duration:
+                song.duration = sc_song.duration
+            sc_audio = VerifiedFFmpegPCMAudio(
+                sc_song.stream_url,
+                before_options=_ffmpeg_before_options(sc_song.http_headers),
+                options=config.FFMPEG_OPTIONS
+            )
+            await cls._verify_audio_source(sc_audio, frames=5, timeout=8.0)
+            print(f"[YTDL] SoundCloud yedeği ile ses doğrulandı: {sc_song.title}")
+            return discord.PCMVolumeTransformer(sc_audio, volume=volume)
+
+        raise RuntimeError(f"Hiçbir kaynaktan ses akışı başlatılamadı ({sc_err or 'Akış zaman aşımı'})")
 
     @classmethod
     async def from_soundcloud(cls, search_query: str, requester: discord.Member) -> tuple[Optional[Song], Optional[str]]:

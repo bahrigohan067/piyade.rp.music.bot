@@ -15,6 +15,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger("PiyadeMusicBot")
 
+
+def ensure_opus_loaded() -> bool:
+    """Linux/Docker ve Windows ortamlarında libopus kütüphanesini başlangıçta zorunlu olarak yükler."""
+    if discord.opus.is_loaded():
+        return True
+    for lib_name in ("libopus.so.0", "libopus.so", "opus", "libopus-0.dll"):
+        try:
+            discord.opus.load_opus(lib_name)
+            if discord.opus.is_loaded():
+                logger.info(f"🔊 Opus ses kodlayıcısı yüklendi: {lib_name}")
+                return True
+        except Exception:
+            continue
+    try:
+        discord.opus._load_default()
+    except Exception:
+        pass
+    return discord.opus.is_loaded()
+
+
+ensure_opus_loaded()
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True

@@ -68,8 +68,13 @@ FFMPEG_OPTIONS = "-vn"
 # çerezlerle uyumlu en sağlam istemcileri kendisi seçer. Eski android/ios istemcileri çerezi
 # desteklemediği için atlanıyor ve aramaların başarısız olmasına neden oluyordu.
 YTDL_OPTIONS = {
-    # HLS (m3u8) dahil tüm akış türlerinde çalışan güvenli format seçici
-    'format': 'bestaudio[acodec=opus]/bestaudio/best',
+    # Parçalı HLS (m3u8) veya SABR yerine doğrudan HTTPS ses akışlarını önceliklendirir
+    'format': (
+        'bestaudio[ext=webm][protocol^=http][protocol!=http_dash_segments]/'
+        'bestaudio[ext=m4a][protocol^=http][protocol!=http_dash_segments]/'
+        'bestaudio[protocol^=http][protocol!=http_dash_segments]/'
+        'bestaudio/best'
+    ),
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
