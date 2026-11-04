@@ -54,8 +54,14 @@ class PiyadeMusicBot(commands.Bot):
             logger.warning(f"⚠️ [{guild.name}] sunucusuna senkronizasyon uyarısı: {e}")
 
     async def on_ready(self):
+        try:
+            import davey
+            dave_info = f"Aktif (v{davey.DAVE_PROTOCOL_VERSION})"
+        except Exception:
+            dave_info = "Yüklü Değil!"
         logger.info(f"==================================================")
         logger.info(f"🤖 Bot Aktif: {self.user.name} (ID: {self.user.id})")
+        logger.info(f"📦 discord.py: v{discord.__version__} | DAVE E2EE: {dave_info} | Opus: {discord.opus.is_loaded()}")
         logger.info(f"👑 Müzik Yetki Rolü ID(leri): {config.MUSIC_ROLE_IDS}")
         logger.info(f"🌐 Bağlı Sunucu Sayısı: {len(self.guilds)}")
         if config.YTDL_OPTIONS.get('cookiefile'):
@@ -87,6 +93,9 @@ class PiyadeMusicBot(commands.Bot):
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         """Eğer bot ses kanalında yalnız kalırsa otomatik olarak ayrılır."""
+        if member.bot:
+            return
+
         voice_client = member.guild.voice_client
         if not voice_client or not voice_client.channel:
             return

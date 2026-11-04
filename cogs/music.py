@@ -28,8 +28,15 @@ class MusicCog(commands.Cog, name="Müzik"):
         voice_channel = user.voice.channel
         voice_client = interaction.guild.voice_client
 
+        if voice_client is not None and not voice_client.is_connected():
+            try:
+                await voice_client.disconnect(force=True)
+            except Exception:
+                pass
+            voice_client = None
+
         if voice_client is None:
-            return await voice_channel.connect(self_deaf=True)
+            return await voice_channel.connect(self_deaf=True, self_mute=False)
         elif voice_client.channel.id != voice_channel.id:
             # check_voice_state zaten bunu filtreliyor ancak ek güvenlik
             return None
@@ -530,12 +537,19 @@ class MusicCog(commands.Cog, name="Müzik"):
             return await ctx.reply("⚠️ Bu komutu kullanabilmek için bir **ses kanalında** bulunmalısınız!")
 
         bot_voice = ctx.guild.voice_client
-        if bot_voice and bot_voice.channel and bot_voice.channel.id != ctx.author.voice.channel.id:
+        if bot_voice and bot_voice.is_connected() and bot_voice.channel and bot_voice.channel.id != ctx.author.voice.channel.id:
             return await ctx.reply(f"🔒 Bot şu anda <#{bot_voice.channel.id}> kanalında hizmet veriyor!")
 
         # 3. Ses kanalına bağlan
+        if bot_voice is not None and not bot_voice.is_connected():
+            try:
+                await bot_voice.disconnect(force=True)
+            except Exception:
+                pass
+            bot_voice = None
+
         if bot_voice is None:
-            voice_client = await ctx.author.voice.channel.connect(self_deaf=True)
+            voice_client = await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
         else:
             voice_client = bot_voice
 

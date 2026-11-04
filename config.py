@@ -53,13 +53,11 @@ EMOJI_BAR_FILLED = os.getenv("EMOJI_BAR_FILLED", "<:1545483634905976975:15578255
 EMOJI_BAR_KNOB = os.getenv("EMOJI_BAR_KNOB", "<:1545483638974578818:1557825653074559096>")
 EMOJI_BAR_EMPTY = os.getenv("EMOJI_BAR_EMPTY", "<:1545483637602910219:1557825718782795827>")
 
-# FFmpeg Akış Yapılandırması (Kopmaları ve TLS reset hatalarını önleyici parametreler)
+# FFmpeg Akış Yapılandırması (Kopmaları önleyici parametreler)
 FFMPEG_BEFORE_OPTIONS = (
     "-reconnect 1 "
     "-reconnect_streamed 1 "
-    "-reconnect_on_network_error 1 "
-    "-reconnect_on_http_error 4xx,5xx "
-    "-reconnect_delay_max 3 "
+    "-reconnect_delay_max 5 "
     "-nostdin"
 )
 

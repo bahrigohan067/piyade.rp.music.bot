@@ -373,7 +373,7 @@ def _ffmpeg_before_options(headers: Optional[Dict[str, str]]) -> str:
     crlf = "\r\n"
     extra = ""
     for key, value in headers.items():
-        if not value or key.lower() == 'user-agent':
+        if not value or key.lower() in ('user-agent', 'cookie'):
             continue
         extra += f"{key}: {value}" + crlf
     if extra:

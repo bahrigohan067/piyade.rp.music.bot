@@ -68,7 +68,7 @@ def check_voice_state(interaction: discord.Interaction) -> tuple[bool, str | Non
         return False, "⚠️ Bu komutu kullanabilmek için bir **ses kanalında** bulunmalısınız!"
 
     bot_voice = guild.voice_client
-    if bot_voice and bot_voice.channel:
+    if bot_voice and bot_voice.is_connected() and bot_voice.channel:
         if bot_voice.channel.id != user.voice.channel.id:
             return False, (
                 f"🔒 **Bot Başka Bir Kanalda Aktif!**\n"

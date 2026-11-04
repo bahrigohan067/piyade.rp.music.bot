@@ -158,6 +158,40 @@ class GuildMusicPlayer:
         except Exception:
             pass
 
+    async def ensure_unmuted_and_unsuppressed(self):
+        """Bot sunucuda susturulmuşsa (Server Mute) veya sahne kanalında bastırılmışsa otomatik açmayı dener."""
+        me = self.guild.me
+        if not me or not me.voice:
+            return
+
+        # Sahne (Stage) kanalında konuşmacı izni
+        if me.voice.suppress:
+            try:
+                await me.edit(suppress=False)
+            except Exception:
+                pass
+
+        # Sunucu susturması (Server Mute) kontrolü
+        if me.voice.mute:
+            try:
+                await me.edit(mute=False)
+                print(f"[Voice] '{self.guild.name}' sunucusunda botun Server Mute durumu otomatik kaldırıldı.")
+            except Exception:
+                if self.text_channel:
+                    try:
+                        warn_embed = discord.Embed(
+                            title="🔇 Bot Sunucuda Susturulmuş (Server Mute)!",
+                            description=(
+                                "Bot şu anda şarkıyı çalıyor ancak Discord'da **Sunucuda Sustur (Server Mute)** "
+                                "işaretli olduğu için ses çıkmıyor!\n\n"
+                                "👉 **Çözüm:** Ses kanalında bota sağ tıklayıp **Sunucuda Sustur** işaretini kaldırın."
+                            ),
+                            color=config.COLOR_ERROR
+                        )
+                        await self.text_channel.send(embed=warn_embed)
+                    except Exception:
+                        pass
+
     def start_status_loop(self):
         """Periyodik olarak ilerleme çubuğunu güncelleyen arka plan görevi."""
         self.stop_status_loop()
@@ -377,6 +411,7 @@ class GuildMusicPlayer:
                 asyncio.run_coroutine_threadsafe(self.process_next(), self.bot.loop)
 
             if self.voice_client and self.voice_client.is_connected():
+                await self.ensure_unmuted_and_unsuppressed()
                 self.voice_client.play(source, after=after_playing)
                 self.is_paused = False
                 self.start_time = asyncio.get_event_loop().time()
